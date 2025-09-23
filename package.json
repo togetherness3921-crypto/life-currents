@@ -1,0 +1,42 @@
+{
+	"name": "remote-mcp-server-authless",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"format": "biome format --write",
+		"lint:fix": "biome lint --fix",
+		"start": "wrangler dev",
+		"cf-typegen": "wrangler types",
+		"type-check": "tsc --noEmit",
+		"auto-sync": "node auto-sync.js"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "1.17.3",
+		"@supabase/supabase-js": "^2.57.4",
+		"@types/fast-json-patch": "^1.1.7",
+		"agents": "^0.0.113",
+		"cors": "^2.8.5",
+		"express": "^5.1.0",
+		"fast-json-patch": "^3.1.1",
+		"json-patch": "^0.7.0",
+		"zod": "^3.25.76"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.2",
+		"@types/cors": "^2.8.19",
+		"@types/express": "^5.0.3",
+		"@types/json-patch": "^0.0.33",
+		"@types/node": "^24.5.2",
+		"chokidar": "^4.0.3",
+		"ts-node-dev": "^2.0.0",
+		"typescript": "^5.9.2",
+		"wrangler": "^4.33.1"
+	},
+	"description": "This example allows you to deploy a remote MCP server that doesn't require authentication on Cloudflare Workers.",
+	"main": "auto-sync.js",
+	"keywords": [],
+	"author": "",
+	"license": "ISC"
+}
