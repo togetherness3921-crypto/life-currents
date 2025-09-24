@@ -7,17 +7,17 @@ import { Textarea } from '../ui/textarea';
 
 interface ChatMessageProps {
   message: Message;
+  onSave: (messageId: string, newContent: string) => void;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSave }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
 
   const isUser = message.role === 'user';
 
   const handleSave = () => {
-    // TODO: Implement forking logic here
-    console.log('Saving edited message:', editText);
+    onSave(message.id, editText);
     setIsEditing(false);
   };
 
