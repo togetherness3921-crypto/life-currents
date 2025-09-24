@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ROLLUP_SKIP_NODEJS_NATIVE=true vite build",
-    "build:dev": "ROLLUP_SKIP_NODEJS_NATIVE=true vite build --mode development",
+    "build": "node ./scripts/run-vite-with-rollup-env.mjs build",
+    "build:dev": "node ./scripts/run-vite-with-rollup-env.mjs build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "auto-sync": "concurrently --names \"VITE,ROOT_SYNC,SUB_SYNC,SUPABASE\" -c \"bgBlue.bold,bgMagenta.bold,bgCyan.bold,bgGreen.bold\" \"npm:dev\" \"node auto-sync.cjs\" \"(cd remote-mcp-server-authless && node auto-sync.js)\" \"npm:sync:supabase\"",
