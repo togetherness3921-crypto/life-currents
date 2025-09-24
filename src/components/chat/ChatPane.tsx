@@ -40,14 +40,14 @@ const ChatPane = () => {
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
 
-        // Add user message to state first
+        // Build payload for API using existing conversation + new user input
+        const historyChain = parentId ? getMessageChain(parentId) : [];
+        const apiMessages = [...historyChain.map(({ role, content }) => ({ role, content })), { role: 'user', content }];
+
+        // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
 
-        // Build payload (conversation ending with this user message)
-        const historyChain = getMessageChain(userMessage.id);
-        const apiMessages = historyChain.map(({ role, content }) => ({ role, content }));
-
-        // Add a blank assistant message to start streaming into
+        // Add a blank assistant message to begin streaming
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
         setStreamingMessageId(assistantMessage.id);
 
