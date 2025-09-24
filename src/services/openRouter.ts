@@ -92,7 +92,7 @@ export const getGeminiResponse = async (
                         fullResponse += delta;
                         if (onStream) onStream(fullResponse);
                     }
-                } catch {}
+                } catch { }
             }
         }
 
