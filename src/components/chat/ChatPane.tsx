@@ -3,9 +3,11 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
+import { useSystemInstructions } from '@/hooks/useSystemInstructions';
+import SystemInstructionDialog from './SystemInstructionDialog';
 
 const ChatPane = () => {
     const {
@@ -23,8 +25,10 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+    const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const { activeInstruction } = useSystemInstructions();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -47,7 +51,12 @@ const ChatPane = () => {
 
         // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? getMessageChain(parentId) : [];
-        const apiMessages = [...historyChain.map(({ role, content }) => ({ role, content })), { role: 'user', content }];
+        const systemPrompt = activeInstruction?.content;
+        const apiMessages = [
+            ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+            ...historyChain.map(({ role, content }) => ({ role, content })),
+            { role: 'user' as const, content },
+        ];
         console.log('[ChatPane] Sending payload to API:', apiMessages); // LOG 7: API payload confirmed
 
         // Add user message to state for UI
@@ -76,7 +85,12 @@ const ChatPane = () => {
             // After the first response, fetch an automatic title suggestion
             if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
                 try {
-                    const actingMessages = [...apiMessages, { role: 'assistant', content: (allMessages[assistantMessage.id]?.content ?? '') }];
+                    const actingMessages = [
+                        ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+                        ...historyChain.map(({ role, content }) => ({ role, content })),
+                        { role: 'user' as const, content },
+                        { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
+                    ];
                     const title = await getTitleSuggestion(actingMessages);
                     if (title) {
                         updateThreadTitle(activeThreadId!, title);
@@ -232,17 +246,27 @@ const ChatPane = () => {
                         disabled={isLoading}
                         className="flex-1"
                     />
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setInstructionDialogOpen(true)}
+                        className="h-10 w-10 p-0"
+                        title="Manage system instructions"
+                    >
+                        <Cog className="h-4 w-4" />
+                    </Button>
                     {isLoading ? (
-                        <Button type="button" onClick={handleCancel} variant="destructive">
+                        <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
                             <Square className="h-4 w-4" />
                         </Button>
                     ) : (
-                        <Button type="submit" disabled={!input.trim()}>
+                        <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
                             <Send className="h-4 w-4" />
                         </Button>
                     )}
                 </form>
             </div>
+            <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
         </div>
     );
 };
