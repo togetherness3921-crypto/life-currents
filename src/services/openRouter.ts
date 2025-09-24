@@ -25,7 +25,7 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-pro-2.5",
+                model: "google/gemini-2.5-pro", // Using Gemini 2.5 Pro as requested
                 messages: messages,
                 stream: true, // Enable streaming
             }),
