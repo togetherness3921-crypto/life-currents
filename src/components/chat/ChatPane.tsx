@@ -26,7 +26,7 @@ const ChatPane = () => {
     const scrollAreaRef = useRef<HTMLDivElement>(null);
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
-    const messages = getMessageChain(activeThread?.leafMessageId || null);
+    const messages = getMessageChain(activeThread?.leafMessageId || activeThread?.selectedRootChild || null);
 
     useEffect(() => {
         // Scroll to bottom when new messages are added
