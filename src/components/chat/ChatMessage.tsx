@@ -34,21 +34,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
         }
     }, [isEditing, message.content]);
 
-    const isUser = message.role === 'user';
-
     const handleSave = () => {
         onSave(message.id, editText);
         setIsEditing(false);
     };
 
     const handleCancel = () => {
-        setEditText(message.content);
+        setEditText('');
         setIsEditing(false);
     };
 
-    if (isUser && isEditing) {
+    if (isEditing) {
         return (
-            <div className="flex justify-end">
+            <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className="w-[75%] space-y-2">
                     <Textarea
                         value={editText}
@@ -69,25 +67,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
     }
 
     return (
-        <div className={`group relative flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-            {isUser && (
-                <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-50 transition-opacity hover:opacity-100">
+        <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+                className={`relative max-w-[75%] rounded-lg px-4 py-3 ${
+                    message.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
+                }`}
+            >
+                <div className="absolute top-1 right-1 opacity-60 transition-opacity hover:opacity-100">
                     <Button
                         onClick={() => setIsEditing(true)}
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-6 w-6 p-0"
                     >
-                        <Pencil className="h-3 w-3" />
+                        <Pencil className="h-3.5 w-3.5" />
                     </Button>
                 </div>
-            )}
-            <div
-                className={`max-w-[75%] rounded-lg px-4 py-2 ${isUser
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground'
-                    }`}
-            >
                 {(isStreaming || (message.thinking && message.thinking.trim().length > 0)) && (
                     <Accordion type="single" collapsible className="w-full mb-2">
                         <AccordionItem value="item-1" className="border-b border-muted-foreground/20">
