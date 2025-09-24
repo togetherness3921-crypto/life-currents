@@ -15,7 +15,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     const [threads, setThreads] = useState<ChatThread[]>(() => {
         try {
             const storedThreads = localStorage.getItem(THREADS_STORAGE_KEY);
-            return storedThreads ? JSON.parse(storedThreads) : [];
+            if (!storedThreads) return [];
+            const parsed: ChatThread[] = JSON.parse(storedThreads);
+            return parsed.map((thread) => ({
+                ...thread,
+                createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
+            }));
         } catch (e) {
             console.error("Failed to parse threads from localStorage", e);
             return [];
