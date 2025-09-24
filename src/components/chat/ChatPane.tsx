@@ -109,26 +109,26 @@ const ChatPane = () => {
         await submitMessage(newContent, activeThreadId, originalMessage.parentId);
     };
 
-    const handleNavigateBranch = (messageId: string, direction: 'prev' | 'next') => {
+    const handleNavigateBranch = (parentId: string, direction: 'prev' | 'next') => {
         if (!activeThreadId || !activeThread) return;
-        const message = allMessages[messageId];
-        if (!message || message.children.length === 0) return;
+        const parentMessage = allMessages[parentId];
+        if (!parentMessage || parentMessage.children.length === 0) return;
 
-        const selectedChild = activeThread.selectedChildByMessageId[messageId];
-        const children = message.children;
-        let index = selectedChild ? children.indexOf(selectedChild) : -1;
+        const siblings = parentMessage.children;
+        const selectedChildId = activeThread.selectedChildByMessageId[parentId] ?? siblings[siblings.length - 1];
+        let index = siblings.indexOf(selectedChildId);
         if (index === -1) {
-            index = children.length - 1;
+            index = siblings.length - 1;
         }
 
         if (direction === 'prev') {
-            index = (index - 1 + children.length) % children.length;
+            index = (index - 1 + siblings.length) % siblings.length;
         } else {
-            index = (index + 1) % children.length;
+            index = (index + 1) % siblings.length;
         }
 
-        const targetChild = children[index];
-        selectBranch(activeThreadId, messageId, targetChild);
+        const targetChild = siblings[index];
+        selectBranch(activeThreadId, parentId, targetChild);
     };
 
     const handleCancel = () => {
@@ -153,13 +153,21 @@ const ChatPane = () => {
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
                 <div className="flex flex-col gap-4">
                     {messages.map((msg) => {
-                        const messageChildren = msg.children;
-                        const totalBranches = messageChildren.length;
-                        let selectedChildId = activeThread?.selectedChildByMessageId[msg.id];
-                        if (totalBranches > 0 && (!selectedChildId || !messageChildren.includes(selectedChildId))) {
-                            selectedChildId = messageChildren[messageChildren.length - 1];
+                        const parentId = msg.parentId;
+                        let branchInfo;
+                        if (parentId) {
+                            const parentMessage = allMessages[parentId];
+                            if (parentMessage && parentMessage.children.length > 1) {
+                                const siblings = parentMessage.children;
+                                const index = siblings.indexOf(msg.id);
+                                branchInfo = {
+                                    index: index >= 0 ? index : 0,
+                                    total: siblings.length,
+                                    onPrev: () => handleNavigateBranch(parentId, 'prev'),
+                                    onNext: () => handleNavigateBranch(parentId, 'next'),
+                                };
+                            }
                         }
-                        const branchIndex = selectedChildId ? messageChildren.indexOf(selectedChildId) : -1;
 
                         return (
                             <ChatMessage
@@ -167,16 +175,7 @@ const ChatPane = () => {
                                 message={msg}
                                 onSave={handleFork}
                                 isStreaming={msg.id === streamingMessageId}
-                                branchInfo={
-                                    totalBranches > 0
-                                        ? {
-                                            index: branchIndex >= 0 ? branchIndex : 0,
-                                            total: totalBranches,
-                                            onPrev: () => handleNavigateBranch(msg.id, 'prev'),
-                                            onNext: () => handleNavigateBranch(msg.id, 'next'),
-                                        }
-                                        : undefined
-                                }
+                                branchInfo={branchInfo}
                             />
                         );
                     })}
