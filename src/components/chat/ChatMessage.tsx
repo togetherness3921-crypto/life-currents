@@ -102,7 +102,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave,
                 )}
                 <p className="whitespace-pre-wrap">{message.content}</p>
             </div>
-            {branchInfo && branchInfo.total > 0 && (
+            {branchInfo && (
                 <div className="mt-2 flex items-center justify-center gap-3 text-xs text-muted-foreground">
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={branchInfo.onPrev}>
                         <ChevronLeft className="h-4 w-4" />
