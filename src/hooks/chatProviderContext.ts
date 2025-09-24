@@ -17,6 +17,8 @@ export interface ChatThread {
     leafMessageId: string | null;
     createdAt: Date;
     selectedChildByMessageId: Record<string, string>;
+    rootChildren: string[];
+    selectedRootChild?: string;
 }
 
 export interface ChatContextValue {
@@ -29,7 +31,7 @@ export interface ChatContextValue {
     addMessage: (threadId: string, message: Omit<Message, 'id' | 'children'>) => Message;
     getMessageChain: (leafId: string | null) => Message[];
     updateMessage: (messageId: string, updates: Partial<Message>) => void;
-    selectBranch: (threadId: string, parentId: string, childId: string) => void;
+    selectBranch: (threadId: string, parentId: string | null, childId: string) => void;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);
