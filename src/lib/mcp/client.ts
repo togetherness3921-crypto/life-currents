@@ -34,7 +34,7 @@ export class McpClient {
     private readonly pending = new Map<string, PendingRequest>();
     private transport?: SSEClientTransport;
 
-    constructor(private readonly serverUrl: string) {}
+    constructor(private readonly serverUrl: string) { }
 
     async connect() {
         if (this.transport) return;
