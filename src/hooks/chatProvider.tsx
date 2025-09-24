@@ -174,25 +174,44 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         setThreads((prev) =>
             prev.map((thread) => {
                 if (thread.id !== threadId) return thread;
+
+                let nextLeaf = childId;
+
                 if (parentId) {
-                    return {
+                    thread = {
                         ...thread,
-                        leafMessageId: childId,
                         selectedChildByMessageId: {
                             ...thread.selectedChildByMessageId,
                             [parentId]: childId,
                         },
                     };
                 } else {
-                    return {
+                    thread = {
                         ...thread,
-                        leafMessageId: childId,
                         selectedRootChild: childId,
                     };
                 }
+
+                const visited = new Set<string>();
+                while (nextLeaf && !visited.has(nextLeaf)) {
+                    visited.add(nextLeaf);
+                    const message = messages[nextLeaf];
+                    if (!message) break;
+                    const children = message.children;
+                    if (children.length === 0) break;
+
+                    const selectedChild = thread.selectedChildByMessageId[nextLeaf] ?? children[children.length - 1];
+                    thread.selectedChildByMessageId[nextLeaf] = selectedChild;
+                    nextLeaf = selectedChild;
+                }
+
+                return {
+                    ...thread,
+                    leafMessageId: nextLeaf || childId,
+                };
             })
         );
-    }, []);
+    }, [messages]);
 
     const value: ChatContextValue = {
         threads,
