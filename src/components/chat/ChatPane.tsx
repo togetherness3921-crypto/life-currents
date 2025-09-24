@@ -39,7 +39,7 @@ const ChatPane = () => {
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
-        
+
         // Add user message to state first
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
 
@@ -50,7 +50,7 @@ const ChatPane = () => {
         // Add a blank assistant message to start streaming into
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
         setStreamingMessageId(assistantMessage.id);
-        
+
         try {
             await getGeminiResponse(apiMessages, (chunk) => {
                 updateMessage(assistantMessage.id, chunk);
