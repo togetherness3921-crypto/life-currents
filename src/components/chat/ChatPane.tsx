@@ -15,7 +15,6 @@ const ChatPane = () => {
         createThread,
         getMessageChain,
         updateMessage,
-        appendMessageContent,
         messages: allMessages // get all messages for parent lookup
     } = useChatContext();
 
@@ -54,7 +53,7 @@ const ChatPane = () => {
 
         try {
             await getGeminiResponse(apiMessages, (chunk) => {
-                appendMessageContent(assistantMessage.id, chunk);
+                updateMessage(assistantMessage.id, chunk);
             });
 
         } catch (error) {

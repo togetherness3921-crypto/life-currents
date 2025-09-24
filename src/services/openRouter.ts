@@ -57,7 +57,7 @@ export const getGeminiResponse = async (
                     const content = parsed.choices[0]?.delta?.content;
                     if (content) {
                         fullResponse += content;
-                        onStream(content); // Send the new chunk only
+                        onStream(fullResponse); // Send the accumulating full response
                     }
                 } catch (e) {
                     console.error("Error parsing stream chunk:", e);

@@ -122,19 +122,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
-    const appendMessageContent = (messageId: string, contentChunk: string) => {
-        setMessages(prev => {
-            if (!prev[messageId]) return prev;
-            return {
-                ...prev,
-                [messageId]: {
-                    ...prev[messageId],
-                    content: prev[messageId].content + contentChunk,
-                }
-            }
-        });
-    };
-
     const value: ChatContextValue = {
         threads,
         messages,
@@ -145,7 +132,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         addMessage,
         getMessageChain,
         updateMessage,
-        appendMessageContent,
     };
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
