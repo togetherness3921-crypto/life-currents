@@ -11,6 +11,7 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from '../ui/badge';
+import ToolCallDetails from './ToolCallDetails';
 
 interface ChatMessageProps {
     message: Message;
@@ -93,7 +94,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave,
                 </div>
                 {(isStreaming || (message.thinking && message.thinking.trim().length > 0)) && (
                     <Accordion type="single" collapsible className="w-full mb-2">
-                        <AccordionItem value="item-1" className="rounded-md border border-muted-foreground/20 bg-background/80">
+                        <AccordionItem value="thinking" className="rounded-md border border-muted-foreground/20 bg-background/80">
                             <AccordionTrigger className="px-3 py-2 text-xs font-medium">
                                 <div className="flex items-center gap-2">
                                     <Badge variant="secondary" className="uppercase tracking-wide text-[10px]">Thinking</Badge>
@@ -105,6 +106,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave,
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
+                )}
+                {message.toolCalls && message.toolCalls.length > 0 && (
+                    <div className="space-y-3 mb-3">
+                        {message.toolCalls.map((call, index) => (
+                            <Accordion type="single" collapsible key={call.id || index} className="w-full">
+                                <AccordionItem value={`tool-${call.id || index}`} className="rounded-md border border-muted-foreground/20 bg-background/80">
+                                    <AccordionTrigger className="px-3 py-2 text-xs font-medium">
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="secondary" className="uppercase tracking-wide text-[10px]">Tool</Badge>
+                                            <span className="text-muted-foreground">{call.name || 'Tool call'}</span>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="px-3 pb-3">
+                                        <ToolCallDetails call={call} />
+                                    </AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
+                        ))}
+                    </div>
                 )}
                 <p className="whitespace-pre-wrap">{message.content}</p>
             </div>
