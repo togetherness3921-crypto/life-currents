@@ -4,13 +4,20 @@ import { Message } from '@/hooks/useChat';
 import { Button } from '../ui/button';
 import { Pencil, Save, X } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
 interface ChatMessageProps {
   message: Message;
+  isStreaming?: boolean;
   onSave: (messageId: string, newContent: string) => void;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSave }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
 
@@ -70,6 +77,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onSave }) => {
         }`}
       >
         <p className="whitespace-pre-wrap">{message.content}</p>
+        {isStreaming && (
+            <Accordion type="single" collapsible className="w-full mt-2">
+              <AccordionItem value="item-1" className="border-t border-muted-foreground/20">
+                <AccordionTrigger className="text-xs pt-2">Thinking...</AccordionTrigger>
+                <AccordionContent className="text-xs">
+                  The model is generating a response...
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+        )}
       </div>
     </div>
   );
