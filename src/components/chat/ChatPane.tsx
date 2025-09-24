@@ -39,22 +39,18 @@ const ChatPane = () => {
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
-        let userMessageId: string | null = null;
-        let assistantMessageId: string | null = null;
+        
+        // Add user message to state first
+        const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+        
+        // Add a blank assistant message to start streaming into
+        const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
+        setStreamingMessageId(assistantMessage.id);
+        
         try {
-            // Build the payload for the API using existing messages plus the new user input
-            const historyChain = parentId ? getMessageChain(parentId) : [];
+            // Now, construct the history for the API call
+            const historyChain = getMessageChain(assistantMessage.id);
             const apiMessages = historyChain.map(({ role, content }) => ({ role, content }));
-            apiMessages.push({ role: 'user', content });
-
-            // Add the new user message to local state
-            const userMessage = addMessage(threadId, { role: 'user', content, parentId });
-            userMessageId = userMessage.id;
-
-            // Add a blank assistant message to stream into
-            const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessageId });
-            assistantMessageId = assistantMessage.id;
-            setStreamingMessageId(assistantMessageId);
 
             await getGeminiResponse(apiMessages, (chunk) => {
                 updateMessage(assistantMessage.id, chunk);
@@ -62,11 +58,7 @@ const ChatPane = () => {
 
         } catch (error) {
             const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-            if (assistantMessageId) {
-                updateMessage(assistantMessageId, errorMessage);
-            } else {
-                addMessage(threadId, { role: 'assistant', content: errorMessage, parentId: userMessageId });
-            }
+            updateMessage(assistantMessage.id, errorMessage);
         } finally {
             setIsLoading(false);
             setStreamingMessageId(null);
