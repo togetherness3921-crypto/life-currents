@@ -100,6 +100,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
 
+    const conversationText = messages
+        .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+        .join('\n');
+
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -109,7 +113,17 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
             },
             body: JSON.stringify({
                 model: "google/gemini-2.5-pro",
-                messages,
+                messages: [
+                    {
+                        role: 'system',
+                        content:
+                            'You are a helpful assistant that generates concise, descriptive titles (max 6 words) for chat conversations. Respond with only the title.',
+                    },
+                    {
+                        role: 'user',
+                        content: `Conversation:\n${conversationText}\n\nProvide only the title.`,
+                    },
+                ],
                 stream: false,
             }),
         });
