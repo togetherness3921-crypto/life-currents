@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SseClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { McpContext } from './mcpProviderContext';
 
@@ -12,16 +13,18 @@ interface ActiveSession {
 }
 
 const connectToServer = async (): Promise<ActiveSession> => {
+    const transport = new SseClientTransport(new URL(`${MCP_SERVER_BASE}/sse`));
     const client = new Client({
-        transport: {
-            type: 'sse',
-            url: `${MCP_SERVER_BASE}/sse`,
-        },
+        name: 'LifeCurrentsChat',
+        version: '1.0.0',
     });
-    await client.connect();
+    await client.connect(transport);
 
     return {
-        dispose: () => client.close(),
+        dispose: () => {
+            void transport.close();
+            client.close();
+        },
         listTools: async () => {
             const response = await client.listTools();
             return response.tools ?? [];
