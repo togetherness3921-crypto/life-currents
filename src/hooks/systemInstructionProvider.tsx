@@ -66,21 +66,21 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
             if (error) throw error;
 
             if (data) {
-                const existing = presets.find((preset) => preset.id === data.id);
-                const instruction: StoredPreset = {
-                    id: data.id,
-                    title: existing?.title ?? DEFAULT_TITLE,
-                    content: data.content ?? '',
-                    updatedAt: data.updated_at ?? new Date().toISOString(),
-                };
+                setPresets((prev) => {
+                    const existing = prev.find((preset) => preset.id === data.id);
+                    const instruction: StoredPreset = {
+                        id: data.id,
+                        title: existing?.title ?? DEFAULT_TITLE,
+                        content: data.content ?? '',
+                        updatedAt: data.updated_at ?? new Date().toISOString(),
+                    };
 
-                if (!existing || existing.content !== instruction.content) {
-                    setPresets((prev) => {
-                        const others = prev.filter((preset) => preset.id !== instruction.id);
-                        return [instruction, ...others];
-                    });
-                }
-                setActiveInstructionId(instruction.id);
+                    const others = prev.filter((preset) => preset.id !== instruction.id);
+                    return [instruction, ...others];
+                });
+                setActiveInstructionId(data.id);
+            } else {
+                setActiveInstructionId(null);
             }
         } catch (error) {
             console.error('[SystemInstructions] Failed to refresh from Supabase', error);
