@@ -136,7 +136,7 @@
       "type": "objectiveNode",
       "label": "Church Event - Hope Ankeny",
       "notes": "$20 Lyft roundtrip. Social buffer for evening.",
-      "status": "not-started",
+      "status": "in-progress",
       "parents": [
         "maintain_key_relationships"
       ],
