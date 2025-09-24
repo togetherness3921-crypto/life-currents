@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SseClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { Client } from '@modelcontextprotocol/sdk/dist/esm/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/dist/esm/client/sse.js';
+import type { Tool } from '@modelcontextprotocol/sdk/dist/esm/types.js';
 import { McpContext } from './mcpProviderContext';
 
 const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
@@ -13,7 +13,7 @@ interface ActiveSession {
 }
 
 const connectToServer = async (): Promise<ActiveSession> => {
-    const transport = new SseClientTransport(new URL(`${MCP_SERVER_BASE}/sse`));
+    const transport = new SSEClientTransport(new URL(`${MCP_SERVER_BASE}/sse`));
     const client = new Client({
         name: 'LifeCurrentsChat',
         version: '1.0.0',
