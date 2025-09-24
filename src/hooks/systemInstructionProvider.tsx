@@ -160,11 +160,13 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         await persistToSupabase(content);
     }, [activeInstructionId, persistToSupabase]);
 
-    const contextValue = useMemo<SystemInstructionsContextValue>(() => {
-        const activeInstruction = activeInstructionId
+    const activeInstruction = useMemo(() => (
+        activeInstructionId
             ? presets.find((preset) => preset.id === activeInstructionId) ?? null
-            : null;
+            : null
+    ), [activeInstructionId, presets]);
 
+    const contextValue = useMemo<SystemInstructionsContextValue>(() => {
         const instructions: SystemInstruction[] = presets.map((preset) => ({
             id: preset.id,
             title: preset.title,
