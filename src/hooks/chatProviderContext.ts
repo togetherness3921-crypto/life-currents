@@ -6,6 +6,7 @@ export interface Message {
     role: 'user' | 'assistant';
     content: string;
     thinking?: string;
+    children: string[];
 }
 
 export type MessageStore = Record<string, Message>;
@@ -15,6 +16,7 @@ export interface ChatThread {
     title: string;
     leafMessageId: string | null;
     createdAt: Date;
+    selectedChildByMessageId: Record<string, string>;
 }
 
 export interface ChatContextValue {
@@ -24,9 +26,10 @@ export interface ChatContextValue {
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;
-    addMessage: (threadId: string, message: Omit<Message, 'id'>) => Message;
+    addMessage: (threadId: string, message: Omit<Message, 'id' | 'children'>) => Message;
     getMessageChain: (leafId: string | null) => Message[];
     updateMessage: (messageId: string, updates: Partial<Message>) => void;
+    selectBranch: (threadId: string, parentId: string, childId: string) => void;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);
