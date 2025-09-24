@@ -1,58 +1,79 @@
-import React, { useState, FormEvent } from 'react';
-import ChatMessage, { Message } from './ChatMessage';
+import React, { useState, FormEvent, useEffect, useRef } from 'react';
+import ChatMessage from './ChatMessage';
 import { getGeminiResponse } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
+import { useChat } from '@/hooks/useChat';
 
 const ChatPane = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { activeThreadId, getThread, addMessage, createThread } = useChat();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  const activeThread = activeThreadId ? getThread(activeThreadId) : null;
+
+  useEffect(() => {
+    // Scroll to bottom when new messages are added
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTo({
+        top: scrollAreaRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [activeThread?.messages?.length]);
+
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: input,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    let currentThreadId = activeThreadId;
+    // If there's no active thread, create a new one
+    if (!currentThreadId) {
+      currentThreadId = createThread();
+    }
+    
+    const userInput = input;
     setInput('');
+
+    // Add user message to state immediately
+    addMessage(currentThreadId, { role: 'user', content: userInput });
     setIsLoading(true);
 
     try {
-      // We only need to send the content and role, not the ID
-      const apiMessages = [...messages, userMessage].map(({ role, content }) => ({ role, content }));
+      const thread = getThread(currentThreadId);
+      const apiMessages = thread ? thread.messages.map(({ role, content }) => ({ role, content })) : [];
+      
       const assistantResponse = await getGeminiResponse(apiMessages);
 
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: assistantResponse,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      addMessage(currentThreadId, { role: 'assistant', content: assistantResponse });
     } catch (error) {
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
+      addMessage(currentThreadId, { role: 'assistant', content: errorMessage });
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (!activeThread) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center bg-background">
+        <Button onClick={createThread}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          New Chat
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col bg-background">
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         <div className="flex flex-col gap-4">
-          {messages.map((msg) => (
+          {activeThread.messages.map((msg) => (
             <ChatMessage key={msg.id} message={msg} />
           ))}
         </div>
