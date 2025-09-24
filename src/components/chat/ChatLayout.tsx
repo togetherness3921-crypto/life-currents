@@ -2,7 +2,7 @@ import React from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../ui/resizable';
 import ChatSidebar from './ChatSidebar';
 import ChatPane from './ChatPane';
-import { ChatProvider } from '@/hooks/useChat';
+import { ChatProvider } from '@/hooks/chatProvider';
 
 const ChatLayout = () => {
     return (
