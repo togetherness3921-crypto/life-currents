@@ -11,7 +11,13 @@ interface ApiMessage {
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
-    onStream: (update: { content?: string; reasoning?: string }) => void
+    {
+        onStream,
+        signal,
+    }: {
+        onStream: (update: { content?: string; reasoning?: string }) => void;
+        signal?: AbortSignal;
+    }
 ): Promise<string> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -29,6 +35,7 @@ export const getGeminiResponse = async (
                 messages: messages,
                 stream: true, // Enable streaming
             }),
+            signal,
         });
 
         if (!response.ok || !response.body) {
@@ -78,7 +85,11 @@ export const getGeminiResponse = async (
 
         return fullResponse;
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.name === 'AbortError') {
+            console.warn('Streaming request aborted by user.');
+            return '';
+        }
         console.error("Error fetching from OpenRouter:", error);
         throw error;
     }
