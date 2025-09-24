@@ -1,5 +1,5 @@
 import React from 'react';
-import { useChatContext } from '@/hooks/chatProvider';
+import { useChatContext } from '@/hooks/useChat';
 import { Button } from '../ui/button';
 import { PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
