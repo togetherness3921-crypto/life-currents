@@ -1,5 +1,3 @@
-import { EventSource } from 'eventsource';
-
 export interface Transport {
     send(message: unknown): Promise<void>;
     close(): Promise<void>;
