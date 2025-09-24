@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import { systemInstructions as defaultInstructionContent } from '@/synced_files/system_instructions';
+import { systemInstructions as defaultInstructionContent } from '../../synced_files/system_instructions';
 
 export interface SystemInstruction {
     id: string;
