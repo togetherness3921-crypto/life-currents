@@ -1,27 +1,26 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ToolListResponse } from '@modelcontextprotocol/sdk/client/sse';
-import { connectSSE } from '@modelcontextprotocol/sdk/client/sse';
-import type { ToolInvocationResponse } from '@modelcontextprotocol/sdk/client/types';
-import type { Tool } from '@modelcontextprotocol/sdk/types';
+import { connectSSE } from '@jsr/modelcontextprotocol__client/sse';
+import type { Tool } from '@jsr/modelcontextprotocol__client/types';
 import { McpContext } from './mcpProviderContext';
 
-const MCP_SERVER_URL = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
+const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
 
 interface ActiveSession {
     dispose: () => void;
-    listTools: () => Promise<ToolListResponse>;
-    callTool: (name: string, args: Record<string, unknown>) => Promise<ToolInvocationResponse>;
+    listTools: () => Promise<Tool[]>;
+    callTool: (name: string, args: Record<string, unknown>) => Promise<{ content: unknown }>;
 }
 
 const connectToServer = async (): Promise<ActiveSession> => {
-    const connection = await connectSSE({
-        url: `${MCP_SERVER_URL}/sse`,
-    });
+    const client = await connectSSE(`${MCP_SERVER_BASE}/sse`);
 
     return {
-        dispose: () => connection.close(),
-        listTools: () => connection.listTools(),
-        callTool: (name, args) => connection.callTool(name, args),
+        dispose: () => client.close(),
+        listTools: async () => {
+            const response = await client.listTools();
+            return response.tools ?? [];
+        },
+        callTool: async (name, args) => client.callTool(name, args),
     };
 };
 
@@ -42,8 +41,8 @@ export const McpProvider = ({ children }: { children: ReactNode }) => {
                     return;
                 }
                 sessionRef.current = activeSession;
-                const response = await activeSession.listTools();
-                setTools(response.tools ?? []);
+                const toolList = await activeSession.listTools();
+                setTools(toolList);
             } catch (error) {
                 console.error('[McpProvider] Failed to connect to MCP server:', error);
                 sessionRef.current?.dispose();
@@ -71,8 +70,7 @@ export const McpProvider = ({ children }: { children: ReactNode }) => {
         if (!sessionRef.current) {
             throw new Error('MCP session is not available.');
         }
-        const result = await sessionRef.current.callTool(toolName, args);
-        return result;
+        return sessionRef.current.callTool(toolName, args);
     }, []);
 
     const value = useMemo(() => ({
