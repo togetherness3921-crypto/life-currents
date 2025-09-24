@@ -103,7 +103,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             messageData: Omit<Message, 'id' | 'children'>
         ): Message => {
             const newId = uuidv4();
-            const newMessage: Message = { ...messageData, id: newId, children: [], toolCalls: messageData.toolCalls ?? [] };
+            const newMessage: Message = { ...messageData, id: newId, children: [], toolCalls: messageData.toolCalls || [] };
 
             setMessages((prev) => {
                 const updated = {
