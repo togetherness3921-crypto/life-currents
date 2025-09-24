@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectSSE } from '@jsr/modelcontextprotocol__client/sse';
-import type { Tool } from '@jsr/modelcontextprotocol__client/types';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { McpContext } from './mcpProviderContext';
 
 const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
@@ -12,7 +12,13 @@ interface ActiveSession {
 }
 
 const connectToServer = async (): Promise<ActiveSession> => {
-    const client = await connectSSE(`${MCP_SERVER_BASE}/sse`);
+    const client = new Client({
+        transport: {
+            type: 'sse',
+            url: `${MCP_SERVER_BASE}/sse`,
+        },
+    });
+    await client.connect();
 
     return {
         dispose: () => client.close(),
