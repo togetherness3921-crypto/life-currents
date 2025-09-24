@@ -1,6 +1,5 @@
-import { ReactNode, useState, useEffect, useCallback } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import debounce from 'lodash.debounce';
 import {
     ChatContext,
     Message,
@@ -123,22 +122,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
-    const appendMessageContent = useCallback(
-        debounce((messageId: string, contentChunk: string) => {
-            setMessages(prev => {
-                if (!prev[messageId]) return prev;
-                return {
-                    ...prev,
-                    [messageId]: {
-                        ...prev[messageId],
-                        content: prev[messageId].content + contentChunk,
-                    }
-                }
-            });
-        }, 200, { leading: true, trailing: true }),
-        []
-    );
-
     const value: ChatContextValue = {
         threads,
         messages,
@@ -149,7 +132,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         addMessage,
         getMessageChain,
         updateMessage,
-        appendMessageContent,
     };
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
