@@ -20,6 +20,16 @@ type PendingRequest = {
     reject: (error: unknown) => void;
 };
 
+interface ToolCallResultPayload {
+    output?: {
+        content?: Array<
+            | { type: 'text'; text: string }
+            | { type: 'raw'; value: unknown }
+        >;
+        isError?: boolean;
+    };
+}
+
 export class McpClient {
     private readonly pending = new Map<string, PendingRequest>();
     private transport?: SSEClientTransport;
@@ -84,10 +94,25 @@ export class McpClient {
     }
 
     async callTool(name: string, args: Record<string, unknown>): Promise<ToolExecutionResult> {
-        const result = await this.sendRequest<ToolExecutionResult>('tools/call', {
+        const rawResult = await this.sendRequest<ToolCallResultPayload>('tools/call', {
             name,
             arguments: args,
         });
+        const result: ToolExecutionResult = {};
+        const output = rawResult?.output;
+        if (output?.isError) {
+            result.isError = true;
+        }
+        if (output?.content) {
+            const textPieces = output.content
+                .filter((item): item is { type: 'text'; text: string } => item.type === 'text')
+                .map((item) => item.text);
+            if (textPieces.length > 0) {
+                result.content = textPieces.join('\n');
+            } else {
+                result.content = output.content;
+            }
+        }
         return result;
     }
 }
