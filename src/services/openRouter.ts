@@ -11,7 +11,7 @@ interface ApiMessage {
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
-    onStream: (chunk: string) => void
+    onStream: (update: { content?: string; reasoning?: string }) => void
 ): Promise<string> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -39,6 +39,7 @@ export const getGeminiResponse = async (
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullResponse = "";
+        let reasoningBuffer = "";
 
         while (true) {
             const { done, value } = await reader.read();
@@ -57,11 +58,17 @@ export const getGeminiResponse = async (
                 try {
                     const parsed = JSON.parse(jsonStr);
                     const content = parsed.choices[0]?.delta?.content;
+                    const reasoning = parsed.choices[0]?.delta?.reasoning;
                     if (content) {
                         fullResponse += content;
                         console.log('[API Service] Parsed Content:', content); // LOG 2: Parsed token
                         console.log('[API Service] Calling onStream with full response:', fullResponse); // LOG 3: Data sent to UI
-                        onStream(fullResponse); // Send the accumulating full response
+                        onStream({ content: fullResponse });
+                    }
+                    if (reasoning) {
+                        reasoningBuffer += reasoning;
+                        console.log('[API Service] Parsed Reasoning:', reasoning);
+                        onStream({ reasoning: reasoningBuffer });
                     }
                 } catch (e) {
                     console.error("Error parsing stream chunk:", e);
