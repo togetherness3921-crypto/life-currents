@@ -525,15 +525,43 @@ export class MyMCP extends McpAgent {
         );
     }
 }
+
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function withCors(response: Response) {
+    const headers = new Headers(response.headers);
+    Object.entries(CORS_HEADERS).forEach(([key, value]) => headers.set(key, value));
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function corsPreflight() {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export default {
-    fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext) {
         const url = new URL(request.url);
+
+        if (request.method === 'OPTIONS') {
+            return corsPreflight();
+        }
+
+        let response: Response;
+
         if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-            return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
+            response = await MyMCP.serveSSE("/sse").fetch(request, env, ctx);
+            return withCors(response);
         }
         if (url.pathname === "/mcp") {
-            return MyMCP.serve("/mcp").fetch(request, env, ctx);
+            response = await MyMCP.serve("/mcp").fetch(request, env, ctx);
+            return withCors(response);
         }
-        return new Response("Not found", { status: 404 });
+
+        response = new Response("Not found", { status: 404, headers: CORS_HEADERS });
+        return response;
     },
 };

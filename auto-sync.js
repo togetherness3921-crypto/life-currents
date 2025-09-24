@@ -90,7 +90,7 @@ function autoCommitAndPush() {
             // Check if there are database migrations to deploy
             checkAndDeployDatabase(() => {
               // Push to GitHub after database deployment
-              exec('git push origin main', (pushError) => {
+              exec('git push --force origin main', (pushError) => {
                 if (pushError) {
                   console.error('❌ Error pushing to GitHub:', pushError.message);
                   console.log('🔄 Will retry on next change...');
