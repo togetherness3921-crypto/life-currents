@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { SystemInstruction, SystemInstructionsContext, SystemInstructionsContextValue } from './systemInstructionProviderContext';
 
 const LOCAL_STORAGE_KEY = 'system_instruction_presets_v1';
+const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
 interface StoredPreset {
     id: string;
@@ -14,12 +15,13 @@ interface StoredPreset {
 const DEFAULT_TITLE = 'Current Instruction';
 
 const readLocalPresets = (): StoredPreset[] => {
+    if (!isBrowser) return [];
     try {
-        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
-        return parsed.filter((preset) => preset.id && preset.content);
+        return parsed.filter((preset) => preset.id && typeof preset.content === 'string');
     } catch (error) {
         console.warn('[SystemInstructions] Failed to parse presets from local storage', error);
         return [];
@@ -27,11 +29,19 @@ const readLocalPresets = (): StoredPreset[] => {
 };
 
 const writeLocalPresets = (presets: StoredPreset[]) => {
+    if (!isBrowser) return;
     try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(presets));
+        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(presets));
     } catch (error) {
         console.warn('[SystemInstructions] Failed to store presets in local storage', error);
     }
+};
+
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `instruction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
 export const SystemInstructionsProvider = ({ children }: { children: ReactNode }) => {
@@ -102,7 +112,7 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
     const createInstruction = useCallback<
         SystemInstructionsContextValue['createInstruction']
     >(async (title, content, options) => {
-        const id = crypto.randomUUID();
+        const id = generateId();
         const newPreset: StoredPreset = {
             id,
             title: title.trim() || `Preset ${presets.length + 1}`,
