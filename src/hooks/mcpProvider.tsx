@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Client } from '@modelcontextprotocol/sdk/client';
+import { Client } from '@modelcontextprotocol/sdk';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client';
 import type { Tool } from '@modelcontextprotocol/sdk/types';
 import { McpContext } from './mcpProviderContext';
