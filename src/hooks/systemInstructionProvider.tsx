@@ -1,6 +1,11 @@
 import { createContext, useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { systemInstructions as defaultInstructionContent } from '@/synced_files/system_instructions';
+import {
+  SystemInstruction,
+  SystemInstructionContext,
+  SystemInstructionContextValue,
+  createDefaultInstruction,
+} from './systemInstructionContext';
 
 export interface SystemInstruction {
   id: string;
@@ -20,17 +25,6 @@ interface SystemInstructionContextValue {
 }
 
 const STORAGE_KEY = 'system_instruction_store_v1';
-
-const createDefaultInstruction = (): SystemInstruction => {
-  const now = new Date().toISOString();
-  return {
-    id: 'default-instruction',
-    title: 'Default System Instruction',
-    content: defaultInstructionContent,
-    createdAt: now,
-    updatedAt: now,
-  };
-};
 
 const loadInitialState = (): { instructions: SystemInstruction[]; activeInstructionId: string } => {
   try {
@@ -59,8 +53,6 @@ const loadInitialState = (): { instructions: SystemInstruction[]; activeInstruct
     activeInstructionId: defaultInstruction.id,
   };
 };
-
-export const SystemInstructionContext = createContext<SystemInstructionContextValue | undefined>(undefined);
 
 export const SystemInstructionProvider = ({ children }: { children: ReactNode }) => {
   const initialState = useMemo(loadInitialState, []);
@@ -114,7 +106,7 @@ export const SystemInstructionProvider = ({ children }: { children: ReactNode })
     );
   }, []);
 
-  const value = useMemo(
+  const value: SystemInstructionContextValue = useMemo(
     () => ({
       instructions,
       activeInstructionId,
