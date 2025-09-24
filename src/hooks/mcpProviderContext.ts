@@ -1,4 +1,5 @@
 import { createContext } from 'react';
+import type { Tool } from '@modelcontextprotocol/sdk/types';
 
 export interface McpContextValue {
     connected: boolean;
