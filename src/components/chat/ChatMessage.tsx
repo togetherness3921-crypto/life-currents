@@ -1,6 +1,6 @@
 // This component will render a single chat message bubble
-import React, { useState } from 'react';
-import { Message } from '@/hooks/chatProvider';
+import React, { useState, useEffect } from 'react';
+import { Message } from '@/hooks/chatProviderContext';
 import { Button } from '../ui/button';
 import { Pencil, Save, X } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
@@ -25,7 +25,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
     });
 
     const [isEditing, setIsEditing] = useState(false);
-    const [editText, setEditText] = useState(message.content);
+    const [editText, setEditText] = useState('');
+
+    // When edit mode is activated, initialize editText with the current message content
+    useEffect(() => {
+        if (isEditing) {
+            setEditText(message.content);
+        }
+    }, [isEditing, message.content]);
 
     const isUser = message.role === 'user';
 
