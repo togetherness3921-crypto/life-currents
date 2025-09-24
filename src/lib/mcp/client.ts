@@ -57,6 +57,7 @@ export class McpClient {
     }
 
     private handleMessage(message: JsonRpcResponse) {
+        console.log('[MCP Client] Incoming message', message);
         if (!message || !message.id) return;
         const pending = this.pending.get(message.id);
         if (!pending) return;
@@ -85,6 +86,7 @@ export class McpClient {
             params,
         };
         return new Promise((resolve, reject) => {
+            console.log('[MCP Client] Sending request', request);
             this.pending.set(id, { resolve, reject });
             this.transport!.send(request).catch((error) => {
                 this.pending.delete(id);

@@ -41,6 +41,7 @@ export class SSEClientTransport implements Transport {
             };
 
             eventSource.addEventListener('endpoint', (event) => {
+                console.log('[MCP Transport] endpoint event received', event);
                 try {
                     const messageEvent = event as MessageEvent<string>;
                     this.endpoint = new URL(messageEvent.data, this.url);
@@ -52,6 +53,7 @@ export class SSEClientTransport implements Transport {
             });
 
             eventSource.onmessage = (event) => {
+                console.log('[MCP Transport] SSE message', event.data);
                 try {
                     const data = JSON.parse(event.data);
                     onMessage(data);
@@ -61,6 +63,7 @@ export class SSEClientTransport implements Transport {
             };
 
             eventSource.onerror = (event) => {
+                console.error('[MCP Transport] SSE error', event);
                 onError(event);
                 finishReject(event);
             };
@@ -69,6 +72,7 @@ export class SSEClientTransport implements Transport {
 
     async send(message: unknown): Promise<void> {
         if (!this.endpoint) {
+            console.warn('[MCP Transport] No endpoint yet, defaulting to /sse/message');
             this.endpoint = new URL('/sse/message', this.url);
         }
 
@@ -85,11 +89,14 @@ export class SSEClientTransport implements Transport {
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
+            console.error('[MCP Transport] POST failed', response.status, text);
             throw new Error(`Error POSTing to endpoint (HTTP ${response.status}): ${text}`);
         }
+        console.log('[MCP Transport] POST success');
     }
 
     async close(): Promise<void> {
+        console.log('[MCP Transport] Closing transport');
         this.abortController?.abort();
         this.eventSource?.close();
     }
