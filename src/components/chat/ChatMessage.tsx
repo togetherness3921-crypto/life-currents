@@ -18,6 +18,12 @@ interface ChatMessageProps {
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave }) => {
+    console.log('[ChatMessage] Rendering message:', { // LOG 8: Component render check
+        id: message.id,
+        content: message.content.substring(0, 50) + '...', // Log truncated content
+        isStreaming,
+    });
+
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(message.content);
 
