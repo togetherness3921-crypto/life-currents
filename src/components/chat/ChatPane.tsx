@@ -1,6 +1,6 @@
 import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse, getTitleSuggestion } from '@/services/openRouter';
+import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
@@ -8,6 +8,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SystemInstructionDialog from './SystemInstructionDialog';
+import { useMcp } from '@/hooks/useMcp';
 
 const ChatPane = () => {
     const {
@@ -29,6 +30,7 @@ const ChatPane = () => {
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
+    const { tools: availableTools, callTool } = useMcp();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -57,13 +59,21 @@ const ChatPane = () => {
             ...historyChain.map(({ role, content }) => ({ role, content })),
             { role: 'user' as const, content },
         ];
+        const toolDefinitions: ApiToolDefinition[] = availableTools.map((tool) => ({
+            type: 'function',
+            function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema,
+            },
+        }));
         console.log('[ChatPane] Sending payload to API:', apiMessages); // LOG 7: API payload confirmed
 
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
 
         // Add a blank assistant message to begin streaming
-        const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
+        const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id, toolCalls: [] });
         setStreamingMessageId(assistantMessage.id);
 
         try {
@@ -78,8 +88,31 @@ const ChatPane = () => {
                     if (update.reasoning !== undefined) {
                         updateMessage(assistantMessage.id, { thinking: update.reasoning });
                     }
+                    if (update.toolCall) {
+                        updateMessage(assistantMessage.id, (current) => {
+                            const toolCalls = [...(current.toolCalls || [])];
+                            const existingIndex = toolCalls.findIndex((call) => call.id === update.toolCall!.id);
+                            if (existingIndex >= 0) {
+                                toolCalls[existingIndex] = {
+                                    ...toolCalls[existingIndex],
+                                    name: update.toolCall.name ?? toolCalls[existingIndex].name,
+                                    arguments: update.toolCall.arguments ?? toolCalls[existingIndex].arguments,
+                                    status: update.toolCall.status === 'finish' ? 'success' : 'running',
+                                };
+                            } else {
+                                toolCalls.push({
+                                    id: update.toolCall.id,
+                                    name: update.toolCall.name ?? update.toolCall.id,
+                                    arguments: update.toolCall.arguments ?? '{}',
+                                    status: 'running',
+                                });
+                            }
+                            return { toolCalls };
+                        });
+                    }
                 },
                 signal: controller.signal,
+                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
             });
 
             // After the first response, fetch an automatic title suggestion
