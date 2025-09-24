@@ -3,13 +3,11 @@
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-type ToolContentBlock = { type: 'text'; text: string } | { type: string;[key: string]: unknown };
-
 export type ApiMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string }
     | { role: 'assistant'; content: string }
-    | { role: 'tool'; tool_call_id: string; name: string; content: string | ToolContentBlock[] };
+    | { role: 'tool'; tool_call_id: string; name: string; content: string };
 
 export interface ApiToolDefinition {
     type: 'function';
@@ -29,9 +27,8 @@ export interface ToolCallDelta {
 }
 
 interface StreamCallbacks {
-    onStream?: (update: { content?: string; reasoning?: string; toolCall?: ToolCallDelta }) => void;
+    onStream: (update: { content?: string; reasoning?: string; toolCall?: ToolCallDelta }) => void;
     signal?: AbortSignal;
-    stream?: boolean;
 }
 
 export interface GeminiResponse {
@@ -45,7 +42,6 @@ export const getGeminiResponse = async (
         onStream,
         signal,
         tools,
-        stream = true,
     }: StreamCallbacks & { tools?: ApiToolDefinition[] }
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
@@ -62,35 +58,15 @@ export const getGeminiResponse = async (
             body: JSON.stringify({
                 model: "google/gemini-2.5-pro",
                 messages,
-                stream,
+                stream: true,
                 tools,
             }),
             signal,
         });
 
-        if (!response.ok) {
+        if (!response.ok || !response.body) {
             const errorBody = await response.text();
             throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody}`);
-        }
-
-        if (!stream) {
-            const data = await response.json();
-            const message = data.choices?.[0]?.message;
-            let content = '';
-            const messageContent = message?.content;
-            if (typeof messageContent === 'string') {
-                content = messageContent;
-            } else if (Array.isArray(messageContent)) {
-                const textPieces = messageContent
-                    .filter((block: any) => block?.type === 'text' && typeof block?.text === 'string')
-                    .map((block: any) => block.text);
-                content = textPieces.join('\n');
-            }
-            return { content, raw: data };
-        }
-
-        if (!response.body) {
-            throw new Error('API response missing body');
         }
 
         const reader = response.body.getReader();
@@ -121,11 +97,11 @@ export const getGeminiResponse = async (
 
                     if (content) {
                         fullResponse += content;
-                        onStream?.({ content: fullResponse });
+                        onStream({ content: fullResponse });
                     }
                     if (reasoning) {
                         reasoningBuffer += reasoning;
-                        onStream?.({ reasoning: reasoningBuffer });
+                        onStream({ reasoning: reasoningBuffer });
                     }
                     if (toolCallDelta) {
                         let status: ToolCallDelta['status'] = 'start';
@@ -142,7 +118,7 @@ export const getGeminiResponse = async (
                             index: toolCallDelta.index,
                             status,
                         };
-                        onStream?.({ toolCall: toolUpdate });
+                        onStream({ toolCall: toolUpdate });
                     }
                 } catch (e) {
                     console.error("Error parsing stream chunk:", e);
