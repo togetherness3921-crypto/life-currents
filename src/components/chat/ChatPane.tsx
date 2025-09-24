@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Send, Square, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
+import { useSystemInstruction } from '@/hooks/useSystemInstruction';
 
 const ChatPane = () => {
     const {
@@ -19,6 +20,7 @@ const ChatPane = () => {
         updateThreadTitle,
         messages: allMessages // get all messages for parent lookup
     } = useChatContext();
+    const { activeInstruction } = useSystemInstruction();
 
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +49,14 @@ const ChatPane = () => {
 
         // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? getMessageChain(parentId) : [];
-        const apiMessages = [...historyChain.map(({ role, content }) => ({ role, content })), { role: 'user', content }];
+        const systemMessage = activeInstruction
+            ? [{ role: 'system' as const, content: activeInstruction.content }]
+            : [];
+        const apiMessages = [
+            ...systemMessage,
+            ...historyChain.map(({ role, content }) => ({ role, content })),
+            { role: 'user' as const, content },
+        ];
         console.log('[ChatPane] Sending payload to API:', apiMessages); // LOG 7: API payload confirmed
 
         // Add user message to state for UI
@@ -76,8 +85,8 @@ const ChatPane = () => {
             // After the first response, fetch an automatic title suggestion
             if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
                 try {
-                    const actingMessages = [...apiMessages, { role: 'assistant', content: (allMessages[assistantMessage.id]?.content ?? '') }];
-                    const title = await getTitleSuggestion(actingMessages);
+                    const accumulation = [...apiMessages, { role: 'assistant' as const, content: allMessages[assistantMessage.id]?.content ?? '' }];
+                    const title = await getTitleSuggestion(accumulation);
                     if (title) {
                         updateThreadTitle(activeThreadId!, title);
                     }
