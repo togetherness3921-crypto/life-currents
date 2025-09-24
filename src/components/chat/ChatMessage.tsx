@@ -84,8 +84,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
             )}
             <div
                 className={`max-w-[75%] rounded-lg px-4 py-2 ${isUser
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
                     }`}
             >
                 {(isStreaming || (message.thinking && message.thinking.trim().length > 0)) && (
