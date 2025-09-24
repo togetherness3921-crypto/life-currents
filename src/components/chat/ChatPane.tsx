@@ -185,6 +185,7 @@ const ChatPane = () => {
                                 }
                             },
                             signal: controller.signal,
+                            tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                         });
                     } catch (toolError) {
                         console.error('Tool execution failed', toolError);
