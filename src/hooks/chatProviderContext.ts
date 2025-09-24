@@ -1,5 +1,14 @@
 import { createContext } from 'react';
 
+export interface ToolCallState {
+    id: string;
+    name: string;
+    arguments: string;
+    status: 'pending' | 'running' | 'success' | 'error';
+    response?: string;
+    error?: string;
+}
+
 export interface Message {
     id: string;
     parentId: string | null;
@@ -7,6 +16,7 @@ export interface Message {
     content: string;
     thinking?: string;
     children: string[];
+    toolCalls?: ToolCallState[];
 }
 
 export type MessageStore = Record<string, Message>;
