@@ -23,7 +23,7 @@ type PendingRequest = {
 type ToolContentItem =
     | { type: 'text'; text: string }
     | { type: 'raw'; value: unknown }
-    | { type: string; [key: string]: unknown };
+    | { type: string;[key: string]: unknown };
 
 interface ToolCallResultPayload {
     output?: {
