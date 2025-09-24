@@ -85,8 +85,8 @@ export const getGeminiResponse = async (
 
         return fullResponse;
 
-    } catch (error: any) {
-        if (error?.name === 'AbortError') {
+    } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
             console.warn('Streaming request aborted by user.');
             return '';
         }
