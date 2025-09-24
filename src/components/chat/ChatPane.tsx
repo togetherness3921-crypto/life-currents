@@ -1,6 +1,6 @@
 import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse } from '@/services/openRouter';
+import { getGeminiResponse, getTitleSuggestion } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Send, Square, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -16,6 +16,7 @@ const ChatPane = () => {
         getMessageChain,
         updateMessage,
         selectBranch,
+        updateThreadTitle,
         messages: allMessages // get all messages for parent lookup
     } = useChatContext();
 
@@ -70,6 +71,18 @@ const ChatPane = () => {
                 },
                 signal: controller.signal,
             });
+
+            // After the first response, fetch an automatic title suggestion
+            if (activeThread?.rootChildren.length === 1 && activeThread.title === 'New Chat') {
+                try {
+                    const title = await getTitleSuggestion([...apiMessages, { role: 'assistant', content: assistantMessage.content }]);
+                    if (title) {
+                        updateThreadTitle(activeThreadId, title);
+                    }
+                } catch (err) {
+                    console.warn('Failed to fetch title suggestion:', err);
+                }
+            }
 
         } catch (error) {
             const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
