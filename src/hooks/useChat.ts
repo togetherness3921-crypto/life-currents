@@ -30,6 +30,7 @@ interface ChatContextType {
   createThread: () => string;
   addMessage: (threadId: string, message: Omit<Message, 'id'>) => Message;
   getMessageChain: (leafId: string | null) => Message[];
+  updateMessage: (messageId: string, newContent: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -89,6 +90,19 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     return newMessage;
   };
 
+  const updateMessage = (messageId: string, newContent: string) => {
+    setMessages(prev => {
+      if (!prev[messageId]) return prev;
+      return {
+        ...prev,
+        [messageId]: {
+          ...prev[messageId],
+          content: newContent,
+        }
+      }
+    });
+  };
+
   const value = {
     threads,
     messages,
@@ -98,6 +112,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     createThread,
     addMessage,
     getMessageChain,
+    updateMessage,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
