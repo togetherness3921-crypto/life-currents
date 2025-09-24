@@ -27,7 +27,8 @@ const ChatPane = () => {
     const scrollAreaRef = useRef<HTMLDivElement>(null);
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
-    const messages = getMessageChain(activeThread?.leafMessageId || activeThread?.selectedRootChild || null);
+    const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
+    const messages = getMessageChain(selectedLeafId);
 
     useEffect(() => {
         // Scroll to bottom when new messages are added
@@ -198,10 +199,10 @@ const ChatPane = () => {
                                     onNext: () => handleNavigateBranch(msg.parentId!, 'next'),
                                 };
                             }
-                        } else if (activeThread?.rootChildren.length > 1) {
+                        } else if (activeThread?.rootChildren && activeThread.rootChildren.length > 1) {
                             const siblings = activeThread.rootChildren;
                             const selectedRoot = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
-                            const index = siblings.indexOf(msg.id);
+                            const index = siblings.indexOf(selectedRoot) >= 0 ? siblings.indexOf(selectedRoot) : siblings.length - 1;
                             branchInfo = {
                                 index: index >= 0 ? index : 0,
                                 total: siblings.length,
