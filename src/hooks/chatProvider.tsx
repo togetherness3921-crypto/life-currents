@@ -21,6 +21,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                 ...thread,
                 createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
                 selectedChildByMessageId: thread.selectedChildByMessageId || {},
+                rootChildren: thread.rootChildren || [],
             }));
         } catch (e) {
             console.error("Failed to parse threads from localStorage", e);
@@ -122,11 +123,24 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                                 : thread.title;
 
                         const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
+                        let rootChildren = thread.rootChildren || [];
+                        let selectedRootChild = thread.selectedRootChild;
+
                         if (messageData.parentId) {
                             selectedChildByMessageId[messageData.parentId] = newId;
+                        } else {
+                            rootChildren = [...rootChildren, newId];
+                            selectedRootChild = newId;
                         }
 
-                        return { ...thread, title: newTitle, leafMessageId: newId, selectedChildByMessageId };
+                        return {
+                            ...thread,
+                            title: newTitle,
+                            leafMessageId: newId,
+                            selectedChildByMessageId,
+                            rootChildren,
+                            selectedRootChild,
+                        };
                     }
                     return thread;
                 })
@@ -156,18 +170,26 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         });
     }, []);
 
-    const selectBranch = useCallback((threadId: string, parentId: string, childId: string) => {
+    const selectBranch = useCallback((threadId: string, parentId: string | null, childId: string) => {
         setThreads((prev) =>
             prev.map((thread) => {
                 if (thread.id !== threadId) return thread;
-                return {
-                    ...thread,
-                    leafMessageId: childId,
-                    selectedChildByMessageId: {
-                        ...thread.selectedChildByMessageId,
-                        [parentId]: childId,
-                    },
-                };
+                if (parentId) {
+                    return {
+                        ...thread,
+                        leafMessageId: childId,
+                        selectedChildByMessageId: {
+                            ...thread.selectedChildByMessageId,
+                            [parentId]: childId,
+                        },
+                    };
+                } else {
+                    return {
+                        ...thread,
+                        leafMessageId: childId,
+                        selectedRootChild: childId,
+                    };
+                }
             })
         );
     }, []);
