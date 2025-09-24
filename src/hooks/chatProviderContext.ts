@@ -31,7 +31,8 @@ export interface ChatContextValue {
     addMessage: (threadId: string, message: Omit<Message, 'id' | 'children'>) => Message;
     getMessageChain: (leafId: string | null) => Message[];
     updateMessage: (messageId: string, updates: Partial<Message>) => void;
-    selectBranch: (threadId: string, parentId: string | null, childId: string) => void;
+    selectBranch: (threadId: string | null, parentId: string | null, childId: string) => void;
+    updateThreadTitle: (threadId: string, title: string) => void;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);
