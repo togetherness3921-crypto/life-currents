@@ -17,12 +17,16 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             const storedThreads = localStorage.getItem(THREADS_STORAGE_KEY);
             if (!storedThreads) return [];
             const parsed: ChatThread[] = JSON.parse(storedThreads);
-            return parsed.map((thread) => ({
-                ...thread,
-                createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
-                selectedChildByMessageId: thread.selectedChildByMessageId || {},
-                rootChildren: thread.rootChildren || [],
-            }));
+            return parsed.map((thread) => {
+                const rootChildren = thread.rootChildren || [];
+                return {
+                    ...thread,
+                    createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
+                    selectedChildByMessageId: thread.selectedChildByMessageId || {},
+                    rootChildren,
+                    selectedRootChild: thread.selectedRootChild ?? rootChildren[rootChildren.length - 1],
+                };
+            });
         } catch (e) {
             console.error("Failed to parse threads from localStorage", e);
             return [];
@@ -85,6 +89,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             title: 'New Chat',
             leafMessageId: null,
             createdAt: new Date(),
+            selectedChildByMessageId: {},
+            rootChildren: [],
         };
         setThreads((prev) => [...prev, newThread]);
         setActiveThreadId(newThread.id);
@@ -115,39 +121,35 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
             setThreads((prev) =>
                 prev.map((thread) => {
-                    if (thread.id === threadId) {
-                        const chain = getMessageChain(thread.leafMessageId);
-                        const newTitle =
-                            chain.length === 0 && messageData.role === 'user'
-                                ? `${messageData.content.substring(0, 30)}...`
-                                : thread.title;
+                    if (thread.id !== threadId) return thread;
 
-                        const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
-                        let rootChildren = thread.rootChildren || [];
-                        let selectedRootChild = thread.selectedRootChild;
+                    const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
+                    let rootChildren = thread.rootChildren ? [...thread.rootChildren] : [];
+                    let selectedRootChild = thread.selectedRootChild;
 
-                        if (messageData.parentId) {
-                            selectedChildByMessageId[messageData.parentId] = newId;
-                        } else {
-                            rootChildren = [...rootChildren, newId];
-                            selectedRootChild = newId;
-                        }
-
-                        return {
-                            ...thread,
-                            title: newTitle,
-                            leafMessageId: newId,
-                            selectedChildByMessageId,
-                            rootChildren,
-                            selectedRootChild,
-                        };
+                    if (messageData.parentId) {
+                        selectedChildByMessageId[messageData.parentId] = newId;
+                    } else {
+                        rootChildren = [...rootChildren, newId];
+                        selectedRootChild = newId;
                     }
-                    return thread;
+
+                    return {
+                        ...thread,
+                        title:
+                            thread.title === 'New Chat' && messageData.role === 'user'
+                                ? `${messageData.content.substring(0, 30)}...`
+                                : thread.title,
+                        leafMessageId: newId,
+                        selectedChildByMessageId,
+                        rootChildren,
+                        selectedRootChild,
+                    };
                 })
             );
             return newMessage;
         },
-        [getMessageChain]
+        []
     );
 
     const updateMessage = useCallback((messageId: string, updates: Partial<Message>) => {
@@ -176,36 +178,32 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             prev.map((thread) => {
                 if (thread.id !== threadId) return thread;
 
-                let nextLeaf = childId;
-
                 const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
+                let selectedRootChild = thread.selectedRootChild;
 
                 if (parentId) {
                     selectedChildByMessageId[parentId] = childId;
                 } else {
-                    thread = {
-                        ...thread,
-                        selectedRootChild: childId,
-                    };
+                    selectedRootChild = childId;
                 }
 
+                let nextLeaf: string | undefined | null = childId;
                 const visited = new Set<string>();
+
                 while (nextLeaf && !visited.has(nextLeaf)) {
                     visited.add(nextLeaf);
                     const message = messages[nextLeaf];
-                    if (!message) break;
-                    const children = message.children;
-                    if (children.length === 0) break;
-
-                    const selectedChild = selectedChildByMessageId[nextLeaf] ?? children[children.length - 1];
+                    if (!message || message.children.length === 0) break;
+                    const selectedChild = selectedChildByMessageId[nextLeaf] ?? message.children[message.children.length - 1];
                     selectedChildByMessageId[nextLeaf] = selectedChild;
                     nextLeaf = selectedChild;
                 }
 
                 return {
                     ...thread,
-                    leafMessageId: nextLeaf || childId,
                     selectedChildByMessageId,
+                    selectedRootChild,
+                    leafMessageId: nextLeaf || childId,
                 };
             })
         );
