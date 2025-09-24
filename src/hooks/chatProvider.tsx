@@ -107,7 +107,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                 ...messageData,
                 id: newId,
                 children: [],
-                toolCalls: [...(messageData.toolCalls ?? [])],
+                toolCalls: messageData.toolCalls ? [...messageData.toolCalls] : [],
             };
 
             setMessages((prev) => {
