@@ -20,6 +20,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             return parsed.map((thread) => ({
                 ...thread,
                 createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
+                selectedChildByMessageId: thread.selectedChildByMessageId || {},
             }));
         } catch (e) {
             console.error("Failed to parse threads from localStorage", e);
@@ -30,7 +31,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     const [messages, setMessages] = useState<MessageStore>(() => {
         try {
             const storedMessages = localStorage.getItem(MESSAGES_STORAGE_KEY);
-            return storedMessages ? JSON.parse(storedMessages) : {};
+            if (!storedMessages) return {};
+            const parsed: MessageStore = JSON.parse(storedMessages);
+            Object.keys(parsed).forEach((id) => {
+                parsed[id].children = parsed[id].children || [];
+            });
+            return parsed;
         } catch (e) {
             console.error("Failed to parse messages from localStorage", e);
             return {};
@@ -87,11 +93,24 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     const addMessage = useCallback(
         (
             threadId: string,
-            messageData: Omit<Message, 'id'>
+            messageData: Omit<Message, 'id' | 'children'>
         ): Message => {
-            const newMessage: Message = { ...messageData, id: uuidv4() };
+            const newId = uuidv4();
+            const newMessage: Message = { ...messageData, id: newId, children: [] };
 
-            setMessages((prev) => ({ ...prev, [newMessage.id]: newMessage }));
+            setMessages((prev) => {
+                const updated = {
+                    ...prev,
+                    [newId]: newMessage,
+                };
+                if (messageData.parentId && prev[messageData.parentId]) {
+                    updated[messageData.parentId] = {
+                        ...prev[messageData.parentId],
+                        children: [...prev[messageData.parentId].children, newId],
+                    };
+                }
+                return updated;
+            });
 
             setThreads((prev) =>
                 prev.map((thread) => {
@@ -102,7 +121,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                                 ? `${messageData.content.substring(0, 30)}...`
                                 : thread.title;
 
-                        return { ...thread, title: newTitle, leafMessageId: newMessage.id };
+                        const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
+                        if (messageData.parentId) {
+                            selectedChildByMessageId[messageData.parentId] = newId;
+                        }
+
+                        return { ...thread, title: newTitle, leafMessageId: newId, selectedChildByMessageId };
                     }
                     return thread;
                 })
