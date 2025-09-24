@@ -51,7 +51,8 @@ const ChatPane = () => {
             assistantMessageId = assistantMessage.id;
             setStreamingMessageId(assistantMessageId);
 
-            const currentChain = getMessageChain(userMessage.id);
+            // The chain should be built from the *new* leaf, which is the blank assistant message
+            const currentChain = getMessageChain(assistantMessage.id);
             const apiMessages = currentChain.map(({ role, content }) => ({ role, content }));
 
             await getGeminiResponse(apiMessages, (chunk) => {
