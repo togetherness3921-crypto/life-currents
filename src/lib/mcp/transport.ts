@@ -69,7 +69,7 @@ export class SSEClientTransport implements Transport {
 
     async send(message: unknown): Promise<void> {
         if (!this.endpoint) {
-            throw new Error('SSE session not initialized');
+            this.endpoint = new URL('/sse/message', this.url);
         }
 
         const response = await fetch(this.endpoint, {
