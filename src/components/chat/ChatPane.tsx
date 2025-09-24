@@ -109,13 +109,23 @@ const ChatPane = () => {
         await submitMessage(newContent, activeThreadId, originalMessage.parentId);
     };
 
-    const handleNavigateBranch = (parentId: string, direction: 'prev' | 'next') => {
+    const handleNavigateBranch = (parentId: string | null, direction: 'prev' | 'next') => {
         if (!activeThreadId || !activeThread) return;
-        const parentMessage = allMessages[parentId];
-        if (!parentMessage || parentMessage.children.length === 0) return;
 
-        const siblings = parentMessage.children;
-        const selectedChildId = activeThread.selectedChildByMessageId[parentId] ?? siblings[siblings.length - 1];
+        let siblings: string[];
+        let selectedChildId: string;
+
+        if (parentId) {
+            const parentMessage = allMessages[parentId];
+            if (!parentMessage || parentMessage.children.length === 0) return;
+            siblings = parentMessage.children;
+            selectedChildId = activeThread.selectedChildByMessageId[parentId] ?? siblings[siblings.length - 1];
+        } else {
+            if (!activeThread.rootChildren || activeThread.rootChildren.length === 0) return;
+            siblings = activeThread.rootChildren;
+            selectedChildId = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
+        }
+
         let index = siblings.indexOf(selectedChildId);
         if (index === -1) {
             index = siblings.length - 1;
@@ -153,20 +163,29 @@ const ChatPane = () => {
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
                 <div className="flex flex-col gap-4">
                     {messages.map((msg) => {
-                        const parentId = msg.parentId;
                         let branchInfo;
-                        if (parentId) {
-                            const parentMessage = allMessages[parentId];
+                        if (msg.parentId) {
+                            const parentMessage = allMessages[msg.parentId];
                             if (parentMessage && parentMessage.children.length > 1) {
                                 const siblings = parentMessage.children;
                                 const index = siblings.indexOf(msg.id);
                                 branchInfo = {
                                     index: index >= 0 ? index : 0,
                                     total: siblings.length,
-                                    onPrev: () => handleNavigateBranch(parentId, 'prev'),
-                                    onNext: () => handleNavigateBranch(parentId, 'next'),
+                                    onPrev: () => handleNavigateBranch(msg.parentId!, 'prev'),
+                                    onNext: () => handleNavigateBranch(msg.parentId!, 'next'),
                                 };
                             }
+                        } else if (activeThread?.rootChildren.length > 1) {
+                            const siblings = activeThread.rootChildren;
+                            const selectedRoot = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
+                            const index = siblings.indexOf(msg.id);
+                            branchInfo = {
+                                index: index >= 0 ? index : 0,
+                                total: siblings.length,
+                                onPrev: () => handleNavigateBranch(null, 'prev'),
+                                onNext: () => handleNavigateBranch(null, 'next'),
+                            };
                         }
 
                         return (
