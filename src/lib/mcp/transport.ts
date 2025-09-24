@@ -21,18 +21,35 @@ export class SSEClientTransport implements Transport {
         }
 
         await new Promise<void>((resolve, reject) => {
+            let resolved = false;
             const eventSource = new EventSource(this.url.href, this.opts.eventSourceInit);
             this.eventSource = eventSource;
             this.abortController = new AbortController();
 
-            eventSource.onerror = (event) => {
-                onError(event);
-                reject(event);
+            const finishResolve = () => {
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
             };
 
-            eventSource.onopen = () => {
-                resolve();
+            const finishReject = (error: unknown) => {
+                if (!resolved) {
+                    resolved = true;
+                    reject(error);
+                }
             };
+
+            eventSource.addEventListener('endpoint', (event) => {
+                try {
+                    const messageEvent = event as MessageEvent<string>;
+                    this.endpoint = new URL(messageEvent.data, this.url);
+                    finishResolve();
+                } catch (error) {
+                    onError(error);
+                    finishReject(error);
+                }
+            });
 
             eventSource.onmessage = (event) => {
                 try {
@@ -42,12 +59,17 @@ export class SSEClientTransport implements Transport {
                     onError(error);
                 }
             };
+
+            eventSource.onerror = (event) => {
+                onError(event);
+                finishReject(event);
+            };
         });
     }
 
     async send(message: unknown): Promise<void> {
         if (!this.endpoint) {
-            this.endpoint = new URL('/sse/message', this.url);
+            throw new Error('SSE session not initialized');
         }
 
         const response = await fetch(this.endpoint, {
