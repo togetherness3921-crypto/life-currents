@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Client } from '@modelcontextprotocol/sdk';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client';
-import type { Tool } from '@modelcontextprotocol/sdk/types';
+import { Client } from '@modelcontextprotocol/sdk/dist/esm/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/dist/esm/client/sse.js';
+import type { Tool } from '@modelcontextprotocol/sdk/dist/esm/types.js';
 import { McpContext } from './mcpProviderContext';
 
 const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
