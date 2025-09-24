@@ -24,9 +24,9 @@ const connectToServer = async (): Promise<ActiveSession> => {
         dispose: () => client.close(),
         listTools: async () => {
             const response = await client.listTools();
-            return response?.tools ?? [];
+            return response.tools ?? [];
         },
-        callTool: async (name, args) => client.callTool(name, args),
+        callTool: (name, args) => client.callTool(name, args),
     };
 };
 
