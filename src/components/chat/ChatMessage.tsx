@@ -93,8 +93,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
                     <Accordion type="single" collapsible className="w-full mt-2">
                         <AccordionItem value="item-1" className="border-t border-muted-foreground/20">
                             <AccordionTrigger className="text-xs pt-2">Thinking...</AccordionTrigger>
-                            <AccordionContent className="text-xs">
-                                The model is generating a response...
+                            <AccordionContent className="text-xs whitespace-pre-wrap">
+                                {message.thinking?.trim().length ? message.thinking : 'The model is generating a response...'}
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
