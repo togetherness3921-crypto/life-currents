@@ -2,7 +2,7 @@
 
 ## Comprehensive Project Context — LifeCurrents Interactive Planning System
 
-<!-- This is a test commit to trigger a new build -->
+<!-- This is a test commit to trigger a new build and fix the lockfile issue -->
 
 ### 1. Core Vision and Hierarchy
 
