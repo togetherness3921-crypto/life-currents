@@ -201,8 +201,7 @@ const ChatPane = () => {
                             }
                         } else if (activeThread?.rootChildren && activeThread.rootChildren.length > 1) {
                             const siblings = activeThread.rootChildren;
-                            const selectedRoot = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
-                            const index = siblings.indexOf(selectedRoot) >= 0 ? siblings.indexOf(selectedRoot) : siblings.length - 1;
+                            const index = siblings.indexOf(msg.id);
                             branchInfo = {
                                 index: index >= 0 ? index : 0,
                                 total: siblings.length,
