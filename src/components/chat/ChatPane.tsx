@@ -71,13 +71,9 @@ const ChatPane = () => {
                 signal: controller.signal,
             });
 
-        } catch (error: any) {
-            if (error?.name === 'AbortError') {
-                updateMessage(assistantMessage.id, { content: 'Generation cancelled by user.' });
-            } else {
-                const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-                updateMessage(assistantMessage.id, { content: errorMessage });
-            }
+        } catch (error) {
+            const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
+            updateMessage(assistantMessage.id, { content: errorMessage });
         } finally {
             setIsLoading(false);
             setStreamingMessageId(null);
