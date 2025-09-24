@@ -4,9 +4,11 @@ import { Button } from '../ui/button';
 import { PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { useSystemInstruction } from '@/hooks/useSystemInstruction';
 
 const ChatSidebar = () => {
     const { threads, activeThreadId, setActiveThreadId, createThread } = useChatContext();
+    const { activeInstruction } = useSystemInstruction();
 
     return (
         <div className="flex h-full flex-col bg-card p-2 text-card-foreground">
@@ -15,6 +17,11 @@ const ChatSidebar = () => {
                     <PlusCircle className="mr-2 h-4 w-4" />
                     New Chat
                 </Button>
+                {activeInstruction && (
+                    <p className="mt-2 text-xs text-muted-foreground line-clamp-2">
+                        Instruction: {activeInstruction.title}
+                    </p>
+                )}
             </div>
             <ScrollArea className="flex-1">
                 <div className="flex flex-col gap-2 p-2">
