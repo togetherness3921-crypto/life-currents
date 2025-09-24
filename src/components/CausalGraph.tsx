@@ -425,7 +425,7 @@ export default function CausalGraph() {
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={20} minSize={10}>
-            <ChatLayout />
+          <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

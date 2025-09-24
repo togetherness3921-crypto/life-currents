@@ -64,7 +64,7 @@ export const getGeminiResponse = async (
                 }
             }
         }
-        
+
         return fullResponse;
 
     } catch (error) {
