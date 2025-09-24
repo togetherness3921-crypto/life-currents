@@ -49,7 +49,7 @@ const ChatPane = () => {
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
-        console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId }); // LOG 6: User action initiated
+        console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId });
 
         // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? getMessageChain(parentId) : [];
@@ -67,7 +67,8 @@ const ChatPane = () => {
                 parameters: tool.inputSchema,
             },
         }));
-        console.log('[ChatPane] Sending payload to API:', apiMessages); // LOG 7: API payload confirmed
+        console.log('[ChatPane] Sending payload to API:', apiMessages);
+        console.log('[ChatPane][MCP] Available tools:', availableTools);
 
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
@@ -82,6 +83,7 @@ const ChatPane = () => {
 
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
+                    console.log('[ChatPane][Streaming update]', update);
                     if (update.content !== undefined) {
                         updateMessage(assistantMessage.id, { content: update.content });
                     }
@@ -89,6 +91,7 @@ const ChatPane = () => {
                         updateMessage(assistantMessage.id, { thinking: update.reasoning });
                     }
                     if (update.toolCall) {
+                        console.log('[ChatPane][Tool update detected]', update.toolCall);
                         updateMessage(assistantMessage.id, (current) => {
                             const toolCalls = [...(current.toolCalls || [])];
                             const existingIndex = toolCalls.findIndex((call) => call.id === update.toolCall!.id);
@@ -115,6 +118,7 @@ const ChatPane = () => {
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
             });
 
+            console.log('[ChatPane][Raw Gemini response]', raw);
             const toolCallRequests = raw?.choices?.[0]?.message?.tool_calls;
             if (toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
                 for (const toolCallRequest of toolCallRequests) {
@@ -149,7 +153,9 @@ const ChatPane = () => {
                     });
 
                     try {
+                        console.log('[ChatPane][MCP] Calling tool', toolName, 'with args', toolArgs);
                         const toolResult = await callTool(toolName, toolArgs);
+                        console.log('[ChatPane][MCP] Tool result', toolResult);
                         const toolContent = JSON.stringify(toolResult?.content ?? '', null, 2);
 
                         updateMessage(assistantMessage.id, (current) => {
@@ -177,6 +183,7 @@ const ChatPane = () => {
 
                         await getGeminiResponse(followUpMessages, {
                             onStream: (update) => {
+                                console.log('[ChatPane][Follow-up streaming update]', update);
                                 if (update.content !== undefined) {
                                     updateMessage(assistantMessage.id, { content: update.content });
                                 }
