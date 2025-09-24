@@ -20,7 +20,7 @@ interface ChatMessageProps {
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave }) => {
     console.log('[ChatMessage] Rendering message:', { // LOG 8: Component render check
         id: message.id,
-        content: message.content.substring(0, 50) + '...', // Log truncated content
+        content: message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content,
         isStreaming,
     });
 
