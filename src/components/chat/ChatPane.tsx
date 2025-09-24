@@ -54,8 +54,13 @@ const ChatPane = () => {
         setStreamingMessageId(assistantMessage.id);
 
         try {
-            await getGeminiResponse(apiMessages, (chunk) => {
-                updateMessage(assistantMessage.id, chunk);
+            await getGeminiResponse(apiMessages, (update) => {
+                if (update.content !== undefined) {
+                    updateMessage(assistantMessage.id, { content: update.content });
+                }
+                if (update.reasoning !== undefined) {
+                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                }
             });
 
         } catch (error) {
