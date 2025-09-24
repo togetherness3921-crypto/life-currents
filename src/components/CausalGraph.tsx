@@ -26,7 +26,6 @@ import DailyCalendarPanel from './DailyCalendarPanel';
 import { useTodayTime } from '@/hooks/useTodayTime';
 import ProgressGraphPanel from './ProgressGraphPanel';
 import StatsPanel from './StatsPanel';
-import ChatLayout from './chat/ChatLayout';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -310,7 +309,7 @@ export default function CausalGraph() {
       </div>
 
       <ResizablePanelGroup direction="vertical" className="h-full w-full">
-        <ResizablePanel defaultSize={65}>
+        <ResizablePanel defaultSize={80}>
           <ResizablePanelGroup direction="horizontal" onLayout={onLayout} className="h-full">
             {/* Left: Main graph */}
             <ResizablePanel defaultSize={panelSizes[0]} minSize={40} className="relative">
@@ -412,7 +411,7 @@ export default function CausalGraph() {
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={15} minSize={10}>
+        <ResizablePanel defaultSize={20} minSize={10}>
           <ResizablePanelGroup direction="horizontal" className="h-full">
             <ResizablePanel defaultSize={75} minSize={30}>
               <ProgressGraphPanel history={docData?.historical_progress} />
@@ -422,10 +421,6 @@ export default function CausalGraph() {
               <StatsPanel history={docData?.historical_progress} />
             </ResizablePanel>
           </ResizablePanelGroup>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={20} minSize={10}>
-          <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
