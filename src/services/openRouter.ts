@@ -4,10 +4,10 @@ const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // Define the structure for messages sent to the API
-interface ApiMessage {
-    role: 'user' | 'assistant';
-    content: string;
-}
+export type ApiMessage =
+    | { role: 'system'; content: string }
+    | { role: 'user'; content: string }
+    | { role: 'assistant'; content: string };
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
