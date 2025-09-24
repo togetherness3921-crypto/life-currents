@@ -1,0 +1,7 @@
+# Agent Error Handling Protocol
+
+When observing an error in the AI agent's behavior, the following protocol must be followed:
+
+1.  **Prioritize Prompt-Based Correction:** The primary solution is always to improve the agent's guiding instructions. Identify the root cause of the agent's logical error and update the `remote-mcp-server-authless/src/tool_instructions.ts` file with clearer, more explicit instructions to prevent the error from recurring.
+
+2.  **Rollback Erroneous Database Changes:** Do not manually "fix" incorrect data the agent has written to the database.

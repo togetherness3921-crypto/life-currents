@@ -1,0 +1,3 @@
+[submodule "remote-mcp-server-authless"]
+	path = remote-mcp-server-authless
+	url = https://github.com/togetherness3921-crypto/remote-mcp-server-authless.git
