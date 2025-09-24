@@ -1,3 +1,4 @@
+process.env.ROLLUP_SKIP_NODEJS_NATIVE = process.env.ROLLUP_SKIP_NODEJS_NATIVE ?? 'true';
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
