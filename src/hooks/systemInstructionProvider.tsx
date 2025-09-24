@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { SystemInstruction, SystemInstructionsContext } from './systemInstructionProviderContext';
+import { SystemInstruction, SystemInstructionsContext, SystemInstructionsContextValue } from './systemInstructionProviderContext';
 
 const LOCAL_STORAGE_KEY = 'system_instruction_presets_v1';
 
