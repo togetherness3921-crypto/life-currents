@@ -74,11 +74,12 @@ const ChatPane = () => {
             });
 
             // After the first response, fetch an automatic title suggestion
-            if (activeThread?.rootChildren.length === 1 && activeThread.title === 'New Chat') {
+            if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
                 try {
-                    const title = await getTitleSuggestion([...apiMessages, { role: 'assistant', content: assistantMessage.content }]);
+                    const actingMessages = [...apiMessages, { role: 'assistant', content: (allMessages[assistantMessage.id]?.content ?? '') }];
+                    const title = await getTitleSuggestion(actingMessages);
                     if (title) {
-                        updateThreadTitle(activeThreadId, title);
+                        updateThreadTitle(activeThreadId!, title);
                     }
                 } catch (err) {
                     console.warn('Failed to fetch title suggestion:', err);
