@@ -83,13 +83,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
                 </div>
             )}
             <div
-                className={`max-w-[75%] rounded-lg px-4 py-2 ${isUser
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground'
-                    }`}
+                className={`max-w-[75%] rounded-lg px-4 py-2 ${
+                    isUser
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
+                }`}
             >
                 <p className="whitespace-pre-wrap">{message.content}</p>
-                {isStreaming && (
+                {(isStreaming || (message.thinking && message.thinking.trim().length > 0)) && (
                     <Accordion type="single" collapsible className="w-full mt-2">
                         <AccordionItem value="item-1" className="border-t border-muted-foreground/20">
                             <AccordionTrigger className="text-xs pt-2">Thinking...</AccordionTrigger>
