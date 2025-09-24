@@ -1,12 +1,8 @@
 // This component will render a single chat message bubble
 import React from 'react';
-
-// Define the message structure
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { Message } from '@/hooks/useChat';
+import { Button } from '../ui/button';
+import { Pencil } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -15,7 +11,14 @@ interface ChatMessageProps {
 const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const isUser = message.role === 'user';
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`group relative flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {isUser && (
+        <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-0 transition-opacity group-hover:opacity-100">
+          <Button variant="ghost" size="icon" className="h-6 w-6">
+            <Pencil className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
       <div
         className={`max-w-[75%] rounded-lg px-4 py-2 ${
           isUser
@@ -23,7 +26,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             : 'bg-muted text-muted-foreground'
         }`}
       >
-        <p>{message.content}</p>
+        <p className="whitespace-pre-wrap">{message.content}</p>
       </div>
     </div>
   );
