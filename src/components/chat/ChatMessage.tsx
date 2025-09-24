@@ -58,7 +58,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
     return (
         <div className={`group relative flex ${isUser ? 'justify-end' : 'justify-start'}`}>
             {isUser && (
-                <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-50 transition-opacity group-hover:opacity-100">
+                <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-50 transition-opacity hover:opacity-100">
                     <Button
                         onClick={() => setIsEditing(true)}
                         variant="ghost"
