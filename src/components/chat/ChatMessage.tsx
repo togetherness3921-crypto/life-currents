@@ -69,11 +69,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
     return (
         <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-                className={`relative max-w-[75%] rounded-lg px-4 py-3 ${
-                    message.role === 'user'
+                className={`relative max-w-[75%] rounded-lg px-4 py-3 ${message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-muted-foreground'
-                }`}
+                    }`}
             >
                 <div className="absolute top-1 right-1 opacity-60 transition-opacity hover:opacity-100">
                     <Button
