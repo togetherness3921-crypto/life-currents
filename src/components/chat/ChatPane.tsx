@@ -13,7 +13,8 @@ const ChatPane = () => {
     getThread, 
     addMessage, 
     createThread,
-    getMessageChain 
+    getMessageChain,
+    messages: allMessages // get all messages for parent lookup
   } = useChat();
 
   const [input, setInput] = useState('');
@@ -33,6 +34,26 @@ const ChatPane = () => {
     }
   }, [messages.length]);
 
+  const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
+    setIsLoading(true);
+    try {
+      // Add user message to state
+      const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+      
+      // Re-fetch the chain *after* adding the new user message
+      const currentChain = getMessageChain(userMessage.id);
+      const apiMessages = currentChain.map(({ role, content }) => ({ role, content }));
+      
+      const assistantResponse = await getGeminiResponse(apiMessages);
+
+      addMessage(threadId, { role: 'assistant', content: assistantResponse, parentId: userMessage.id });
+    } catch (error) {
+      const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
+      addMessage(threadId, { role: 'assistant', content: errorMessage, parentId });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,30 +66,21 @@ const ChatPane = () => {
     
     const userInput = input;
     setInput('');
-    setIsLoading(true);
+    
+    const currentChain = getMessageChain(activeThread?.leafMessageId || null);
+    const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
+    
+    await submitMessage(userInput, currentThreadId, parentId);
+  };
 
-    try {
-      // Get the current message chain to determine the parent of the new message
-      const currentChain = getMessageChain(getThread(currentThreadId)?.leafMessageId || null);
-      const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
+  const handleFork = async (originalMessageId: string, newContent: string) => {
+    if (!activeThreadId) return;
 
-      // Add user message
-      const userMessage = addMessage(currentThreadId, { role: 'user', content: userInput, parentId });
-      
-      const apiMessages = [...currentChain, userMessage].map(({ role, content }) => ({ role, content }));
-      
-      const assistantResponse = await getGeminiResponse(apiMessages);
-
-      addMessage(currentThreadId, { role: 'assistant', content: assistantResponse, parentId: userMessage.id });
-    } catch (error) {
-      const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-      // Find the last message to append the error message to
-      const currentChain = getMessageChain(getThread(currentThreadId)?.leafMessageId || null);
-      const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
-      addMessage(currentThreadId, { role: 'assistant', content: errorMessage, parentId });
-    } finally {
-      setIsLoading(false);
-    }
+    const originalMessage = allMessages[originalMessageId];
+    if (!originalMessage) return;
+    
+    // The new message forks from the parent of the original message
+    await submitMessage(newContent, activeThreadId, originalMessage.parentId);
   };
 
   if (!activeThread) {
@@ -87,7 +99,7 @@ const ChatPane = () => {
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         <div className="flex flex-col gap-4">
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
+            <ChatMessage key={msg.id} message={msg} onSave={handleFork} />
           ))}
         </div>
       </ScrollArea>
