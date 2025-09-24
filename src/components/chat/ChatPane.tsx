@@ -42,18 +42,19 @@ const ChatPane = () => {
         let userMessageId: string | null = null;
         let assistantMessageId: string | null = null;
         try {
-            // Add user message to state
+            // Build the payload for the API using existing messages plus the new user input
+            const historyChain = parentId ? getMessageChain(parentId) : [];
+            const apiMessages = historyChain.map(({ role, content }) => ({ role, content }));
+            apiMessages.push({ role: 'user', content });
+
+            // Add the new user message to local state
             const userMessage = addMessage(threadId, { role: 'user', content, parentId });
             userMessageId = userMessage.id;
 
-            // Add a blank assistant message to start streaming into
+            // Add a blank assistant message to stream into
             const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessageId });
             assistantMessageId = assistantMessage.id;
             setStreamingMessageId(assistantMessageId);
-
-            // The chain should be built from the *new* leaf, which is the blank assistant message
-            const currentChain = getMessageChain(assistantMessage.id);
-            const apiMessages = currentChain.map(({ role, content }) => ({ role, content }));
 
             await getGeminiResponse(apiMessages, (chunk) => {
                 updateMessage(assistantMessage.id, chunk);
