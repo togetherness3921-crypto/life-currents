@@ -26,7 +26,7 @@ import DailyCalendarPanel from './DailyCalendarPanel';
 import { useTodayTime } from '@/hooks/useTodayTime';
 import ProgressGraphPanel from './ProgressGraphPanel';
 import StatsPanel from './StatsPanel';
-import ChatPane from './chat/ChatPane';
+import ChatLayout from './chat/ChatLayout';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -425,7 +425,7 @@ export default function CausalGraph() {
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={20} minSize={10}>
-            <ChatPane />
+            <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
