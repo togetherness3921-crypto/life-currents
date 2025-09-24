@@ -1,7 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Client } from '@modelcontextprotocol/sdk/dist/esm/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/dist/esm/client/sse.js';
-import type { Tool } from '@modelcontextprotocol/sdk/dist/esm/types.js';
+import { McpClient } from '@/lib/mcp/client';
+import type { Tool } from '@/lib/mcp/types';
 import { McpContext } from './mcpProviderContext';
 
 const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
@@ -9,26 +8,16 @@ const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.wor
 interface ActiveSession {
     dispose: () => void;
     listTools: () => Promise<Tool[]>;
-    callTool: (name: string, args: Record<string, unknown>) => Promise<{ content: unknown }>;
+    callTool: (name: string, args: Record<string, unknown>) => Promise<{ content?: unknown }>;
 }
 
 const connectToServer = async (): Promise<ActiveSession> => {
-    const transport = new SSEClientTransport(new URL(`${MCP_SERVER_BASE}/sse`));
-    const client = new Client({
-        name: 'LifeCurrentsChat',
-        version: '1.0.0',
-    });
-    await client.connect(transport);
+    const client = new McpClient(MCP_SERVER_BASE);
+    await client.connect();
 
     return {
-        dispose: () => {
-            void transport.close();
-            client.close();
-        },
-        listTools: async () => {
-            const response = await client.listTools();
-            return response.tools ?? [];
-        },
+        dispose: () => client.close(),
+        listTools: () => client.listTools(),
         callTool: (name, args) => client.callTool(name, args),
     };
 };
