@@ -14,11 +14,13 @@ const ChatPane = () => {
     addMessage, 
     createThread,
     getMessageChain,
+    updateMessage,
     messages: allMessages // get all messages for parent lookup
   } = useChat();
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const activeThread = activeThreadId ? getThread(activeThreadId) : null;
@@ -32,26 +34,40 @@ const ChatPane = () => {
         behavior: 'smooth',
       });
     }
-  }, [messages.length]);
+  }, [messages.length, streamingMessageId]);
+
 
   const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
     setIsLoading(true);
+    let userMessageId: string | null = null;
+    let assistantMessageId: string | null = null;
     try {
       // Add user message to state
       const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+      userMessageId = userMessage.id;
       
-      // Re-fetch the chain *after* adding the new user message
+      // Add a blank assistant message to start streaming into
+      const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessageId });
+      assistantMessageId = assistantMessage.id;
+      setStreamingMessageId(assistantMessageId);
+
       const currentChain = getMessageChain(userMessage.id);
       const apiMessages = currentChain.map(({ role, content }) => ({ role, content }));
       
-      const assistantResponse = await getGeminiResponse(apiMessages);
+      await getGeminiResponse(apiMessages, (chunk) => {
+        updateMessage(assistantMessage.id, chunk);
+      });
 
-      addMessage(threadId, { role: 'assistant', content: assistantResponse, parentId: userMessage.id });
     } catch (error) {
       const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-      addMessage(threadId, { role: 'assistant', content: errorMessage, parentId });
+      if (assistantMessageId) {
+        updateMessage(assistantMessageId, errorMessage);
+      } else {
+        addMessage(threadId, { role: 'assistant', content: errorMessage, parentId: userMessageId });
+      }
     } finally {
       setIsLoading(false);
+      setStreamingMessageId(null);
     }
   };
 
@@ -99,7 +115,12 @@ const ChatPane = () => {
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         <div className="flex flex-col gap-4">
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} onSave={handleFork} />
+            <ChatMessage 
+              key={msg.id} 
+              message={msg} 
+              onSave={handleFork}
+              isStreaming={msg.id === streamingMessageId}
+            />
           ))}
         </div>
       </ScrollArea>
