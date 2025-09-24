@@ -3,7 +3,7 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Loader2, PlusCircle } from 'lucide-react';
+import { Send, Loader2, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 
@@ -15,6 +15,7 @@ const ChatPane = () => {
         createThread,
         getMessageChain,
         updateMessage,
+        selectBranch,
         messages: allMessages // get all messages for parent lookup
     } = useChatContext();
 
@@ -100,6 +101,28 @@ const ChatPane = () => {
         await submitMessage(newContent, activeThreadId, originalMessage.parentId);
     };
 
+    const handleNavigateBranch = (messageId: string, direction: 'prev' | 'next') => {
+        if (!activeThreadId || !activeThread) return;
+        const message = allMessages[messageId];
+        if (!message || message.children.length === 0) return;
+
+        const selectedChild = activeThread.selectedChildByMessageId[messageId];
+        const children = message.children;
+        let index = selectedChild ? children.indexOf(selectedChild) : -1;
+        if (index === -1) {
+            index = children.length - 1;
+        }
+
+        if (direction === 'prev') {
+            index = (index - 1 + children.length) % children.length;
+        } else {
+            index = (index + 1) % children.length;
+        }
+
+        const targetChild = children[index];
+        selectBranch(activeThreadId, messageId, targetChild);
+    };
+
     if (!activeThread) {
         return (
             <div className="flex h-full w-full flex-col items-center justify-center bg-background">
@@ -115,14 +138,34 @@ const ChatPane = () => {
         <div className="flex h-full flex-col bg-background">
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
                 <div className="flex flex-col gap-4">
-                    {messages.map((msg) => (
-                        <ChatMessage
-                            key={msg.id}
-                            message={msg}
-                            onSave={handleFork}
-                            isStreaming={msg.id === streamingMessageId}
-                        />
-                    ))}
+                    {messages.map((msg) => {
+                        const messageChildren = msg.children;
+                        const totalBranches = messageChildren.length;
+                        let selectedChildId = activeThread?.selectedChildByMessageId[msg.id];
+                        if (totalBranches > 0 && (!selectedChildId || !messageChildren.includes(selectedChildId))) {
+                            selectedChildId = messageChildren[messageChildren.length - 1];
+                        }
+                        const branchIndex = selectedChildId ? messageChildren.indexOf(selectedChildId) : -1;
+
+                        return (
+                            <ChatMessage
+                                key={msg.id}
+                                message={msg}
+                                onSave={handleFork}
+                                isStreaming={msg.id === streamingMessageId}
+                                branchInfo={
+                                    totalBranches > 0
+                                        ? {
+                                            index: branchIndex >= 0 ? branchIndex : 0,
+                                            total: totalBranches,
+                                            onPrev: () => handleNavigateBranch(msg.id, 'prev'),
+                                            onNext: () => handleNavigateBranch(msg.id, 'next'),
+                                        }
+                                        : undefined
+                                }
+                            />
+                        );
+                    })}
                 </div>
             </ScrollArea>
             <div className="border-t p-4">
