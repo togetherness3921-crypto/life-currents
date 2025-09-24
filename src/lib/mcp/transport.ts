@@ -13,7 +13,7 @@ export class SSEClientTransport implements Transport {
     private endpoint?: URL;
     private abortController?: AbortController;
 
-    constructor(private readonly url: URL, private readonly opts: SSEClientTransportOptions = {}) {}
+    constructor(private readonly url: URL, private readonly opts: SSEClientTransportOptions = {}) { }
 
     async start(onMessage: (message: any) => void, onError: (error: unknown) => void) {
         if (this.eventSource) {
