@@ -80,7 +80,7 @@ const ChatPane = () => {
             const controller = new AbortController();
             abortControllerRef.current = controller;
 
-            await getGeminiResponse(apiMessages, {
+            const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
                     if (update.content !== undefined) {
                         updateMessage(assistantMessage.id, { content: update.content });
@@ -114,6 +114,95 @@ const ChatPane = () => {
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
             });
+
+            const toolCallRequests = raw?.choices?.[0]?.message?.tool_calls;
+            if (toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
+                for (const toolCallRequest of toolCallRequests) {
+                    const toolId = toolCallRequest.id;
+                    const toolName = toolCallRequest.function?.name;
+                    let toolArgs: Record<string, unknown> = {};
+                    try {
+                        toolArgs = toolCallRequest.function?.arguments ? JSON.parse(toolCallRequest.function.arguments) : {};
+                    } catch (parseError) {
+                        console.error('Failed to parse tool arguments', parseError);
+                    }
+
+                    updateMessage(assistantMessage.id, (current) => {
+                        const toolCalls = [...(current.toolCalls || [])];
+                        const existingIndex = toolCalls.findIndex((call) => call.id === toolId);
+                        if (existingIndex >= 0) {
+                            toolCalls[existingIndex] = {
+                                ...toolCalls[existingIndex],
+                                name: toolName ?? toolCalls[existingIndex].name,
+                                arguments: toolCallRequest.function?.arguments ?? toolCalls[existingIndex].arguments,
+                                status: 'running',
+                            };
+                        } else {
+                            toolCalls.push({
+                                id: toolId,
+                                name: toolName ?? toolId,
+                                arguments: toolCallRequest.function?.arguments ?? '{}',
+                                status: 'running',
+                            });
+                        }
+                        return { toolCalls };
+                    });
+
+                    try {
+                        const toolResult = await callTool(toolName, toolArgs);
+                        const toolContent = JSON.stringify(toolResult?.content ?? '', null, 2);
+
+                        updateMessage(assistantMessage.id, (current) => {
+                            const toolCalls = [...(current.toolCalls || [])];
+                            const existingIndex = toolCalls.findIndex((call) => call.id === toolId);
+                            if (existingIndex >= 0) {
+                                toolCalls[existingIndex] = {
+                                    ...toolCalls[existingIndex],
+                                    status: 'success',
+                                    response: toolContent,
+                                };
+                            }
+                            return { toolCalls };
+                        });
+
+                        const followUpMessages = [
+                            ...apiMessages,
+                            {
+                                role: 'tool' as const,
+                                tool_call_id: toolId,
+                                name: toolName ?? toolId,
+                                content: toolContent,
+                            },
+                        ];
+
+                        await getGeminiResponse(followUpMessages, {
+                            onStream: (update) => {
+                                if (update.content !== undefined) {
+                                    updateMessage(assistantMessage.id, { content: update.content });
+                                }
+                                if (update.reasoning !== undefined) {
+                                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                                }
+                            },
+                            signal: controller.signal,
+                        });
+                    } catch (toolError) {
+                        console.error('Tool execution failed', toolError);
+                        updateMessage(assistantMessage.id, (current) => {
+                            const toolCalls = [...(current.toolCalls || [])];
+                            const existingIndex = toolCalls.findIndex((call) => call.id === toolId);
+                            if (existingIndex >= 0) {
+                                toolCalls[existingIndex] = {
+                                    ...toolCalls[existingIndex],
+                                    status: 'error',
+                                    error: toolError instanceof Error ? toolError.message : 'Tool call failed',
+                                };
+                            }
+                            return { toolCalls };
+                        });
+                    }
+                }
+            }
 
             // After the first response, fetch an automatic title suggestion
             if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
