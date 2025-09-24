@@ -112,20 +112,29 @@ const ChatPane = () => {
     const handleNavigateBranch = (parentId: string | null, direction: 'prev' | 'next') => {
         if (!activeThreadId || !activeThread) return;
 
-        let siblings: string[];
-        let selectedChildId: string;
+        if (parentId === null) {
+            const siblings = activeThread.rootChildren;
+            if (!siblings || siblings.length === 0) return;
+            const selectedRoot = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
+            let index = siblings.indexOf(selectedRoot);
+            if (index === -1) index = siblings.length - 1;
 
-        if (parentId) {
-            const parentMessage = allMessages[parentId];
-            if (!parentMessage || parentMessage.children.length === 0) return;
-            siblings = parentMessage.children;
-            selectedChildId = activeThread.selectedChildByMessageId[parentId] ?? siblings[siblings.length - 1];
-        } else {
-            if (!activeThread.rootChildren || activeThread.rootChildren.length === 0) return;
-            siblings = activeThread.rootChildren;
-            selectedChildId = activeThread.selectedRootChild ?? siblings[siblings.length - 1];
+            if (direction === 'prev') {
+                index = (index - 1 + siblings.length) % siblings.length;
+            } else {
+                index = (index + 1) % siblings.length;
+            }
+
+            const targetChild = siblings[index];
+            selectBranch(activeThreadId, null, targetChild);
+            return;
         }
 
+        const parentMessage = allMessages[parentId];
+        if (!parentMessage || parentMessage.children.length === 0) return;
+
+        const siblings = parentMessage.children;
+        const selectedChildId = activeThread.selectedChildByMessageId[parentId] ?? siblings[siblings.length - 1];
         let index = siblings.indexOf(selectedChildId);
         if (index === -1) {
             index = siblings.length - 1;
