@@ -39,14 +39,14 @@ const ChatPane = () => {
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
-        
+
         // Add user message to state first
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
-        
+
         // Add a blank assistant message to start streaming into
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
         setStreamingMessageId(assistantMessage.id);
-        
+
         try {
             // Now, construct the history for the API call
             const historyChain = getMessageChain(assistantMessage.id);
