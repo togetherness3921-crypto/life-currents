@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Message } from '@/hooks/chatProviderContext';
 import { Button } from '../ui/button';
-import { Pencil, Save, X } from 'lucide-react';
+import { Pencil, Save, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 import {
     Accordion,
@@ -15,9 +15,15 @@ interface ChatMessageProps {
     message: Message;
     isStreaming?: boolean;
     onSave: (messageId: string, newContent: string) => void;
+    branchInfo?: {
+        index: number;
+        total: number;
+        onPrev: () => void;
+        onNext: () => void;
+    };
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave, branchInfo }) => {
     console.log('[ChatMessage] Rendering message:', { // LOG 8: Component render check
         id: message.id,
         content: message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content,
@@ -96,6 +102,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
                 )}
                 <p className="whitespace-pre-wrap">{message.content}</p>
             </div>
+            {branchInfo && branchInfo.total > 0 && (
+                <div className="mt-2 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={branchInfo.onPrev}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="px-2 py-1 rounded border border-muted-foreground/40">
+                        {branchInfo.index + 1} / {branchInfo.total}
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={branchInfo.onNext}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
         </div>
     );
 };
