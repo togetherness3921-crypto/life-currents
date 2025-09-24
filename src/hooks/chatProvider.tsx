@@ -156,6 +156,22 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         });
     }, []);
 
+    const selectBranch = useCallback((threadId: string, parentId: string, childId: string) => {
+        setThreads((prev) =>
+            prev.map((thread) => {
+                if (thread.id !== threadId) return thread;
+                return {
+                    ...thread,
+                    leafMessageId: childId,
+                    selectedChildByMessageId: {
+                        ...thread.selectedChildByMessageId,
+                        [parentId]: childId,
+                    },
+                };
+            })
+        );
+    }, []);
+
     const value: ChatContextValue = {
         threads,
         messages,
@@ -166,6 +182,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         addMessage,
         getMessageChain,
         updateMessage,
+        selectBranch,
     };
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
