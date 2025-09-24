@@ -170,21 +170,18 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         });
     }, []);
 
-    const selectBranch = useCallback((threadId: string, parentId: string | null, childId: string) => {
+    const selectBranch = useCallback((threadId: string | null, parentId: string | null, childId: string) => {
+        if (!threadId) return;
         setThreads((prev) =>
             prev.map((thread) => {
                 if (thread.id !== threadId) return thread;
 
                 let nextLeaf = childId;
 
+                const selectedChildByMessageId = { ...thread.selectedChildByMessageId };
+
                 if (parentId) {
-                    thread = {
-                        ...thread,
-                        selectedChildByMessageId: {
-                            ...thread.selectedChildByMessageId,
-                            [parentId]: childId,
-                        },
-                    };
+                    selectedChildByMessageId[parentId] = childId;
                 } else {
                     thread = {
                         ...thread,
@@ -200,18 +197,25 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                     const children = message.children;
                     if (children.length === 0) break;
 
-                    const selectedChild = thread.selectedChildByMessageId[nextLeaf] ?? children[children.length - 1];
-                    thread.selectedChildByMessageId[nextLeaf] = selectedChild;
+                    const selectedChild = selectedChildByMessageId[nextLeaf] ?? children[children.length - 1];
+                    selectedChildByMessageId[nextLeaf] = selectedChild;
                     nextLeaf = selectedChild;
                 }
 
                 return {
                     ...thread,
                     leafMessageId: nextLeaf || childId,
+                    selectedChildByMessageId,
                 };
             })
         );
     }, [messages]);
+
+    const updateThreadTitle = useCallback((threadId: string, title: string) => {
+        setThreads((prev) =>
+            prev.map((thread) => (thread.id === threadId ? { ...thread, title } : thread))
+        );
+    }, []);
 
     const value: ChatContextValue = {
         threads,
@@ -224,6 +228,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         getMessageChain,
         updateMessage,
         selectBranch,
+        updateThreadTitle,
     };
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
