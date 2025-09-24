@@ -113,15 +113,21 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updateMessage = useCallback((messageId: string, newContent: string) => {
+        console.log(`[ChatProvider] Updating message ${messageId} with new content:`, newContent); // LOG 4: State update function called
         setMessages((prev) => {
-            if (!prev[messageId]) return prev;
-            return {
+            if (!prev[messageId]) {
+                console.warn(`[ChatProvider] Attempted to update non-existent message: ${messageId}`);
+                return prev;
+            }
+            const updatedMessages = {
                 ...prev,
                 [messageId]: {
                     ...prev[messageId],
                     content: newContent,
                 },
             };
+            console.log(`[ChatProvider] Message ${messageId} updated in state store.`); // LOG 5: State object updated
+            return updatedMessages;
         });
     }, []);
 
