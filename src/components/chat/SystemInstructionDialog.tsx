@@ -46,6 +46,14 @@ const SystemInstructionDialog: React.FC<SystemInstructionDialogProps> = ({ open,
         return instructions.find((instruction) => instruction.id === targetId) ?? activeInstruction;
     }, [activeInstruction, activeInstructionId, instructions, isCreatingNew, selectedInstructionId]);
 
+    const displayTitle = isEditingExisting
+        ? localTitle
+        : selectedInstruction?.title ?? activeInstruction?.title ?? '';
+
+    const displayContent = isEditingExisting
+        ? localContent
+        : selectedInstruction?.content ?? activeInstruction?.content ?? '';
+
     const resetForm = () => {
         setSelectedInstructionId(null);
         setLocalTitle('');
@@ -188,7 +196,7 @@ const SystemInstructionDialog: React.FC<SystemInstructionDialogProps> = ({ open,
                         <div className="space-y-3">
                             <div className="flex items-center gap-2">
                                 <Input
-                                    value={localTitle}
+                                    value={displayTitle}
                                     onChange={(event) => setLocalTitle(event.target.value)}
                                     placeholder="Instruction title"
                                     disabled={!isEditingExisting}
@@ -205,7 +213,7 @@ const SystemInstructionDialog: React.FC<SystemInstructionDialogProps> = ({ open,
                                 )}
                             </div>
                             <Textarea
-                                value={isEditingExisting ? localContent : (selectedInstruction?.content ?? activeInstruction?.content ?? '')}
+                                value={displayContent}
                                 onChange={(event) => setLocalContent(event.target.value)}
                                 rows={20}
                                 disabled={!isEditingExisting}
