@@ -41,15 +41,15 @@ const ChatPane = () => {
         setIsLoading(true);
         console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId }); // LOG 6: User action initiated
 
-        // Add user message to state first
-        const userMessage = addMessage(threadId, { role: 'user', content, parentId });
-
-        // Build payload (conversation ending with this user message)
-        const historyChain = getMessageChain(userMessage.id);
-        const apiMessages = historyChain.map(({ role, content }) => ({ role, content }));
+        // Build payload for API using existing conversation + new user input
+        const historyChain = parentId ? getMessageChain(parentId) : [];
+        const apiMessages = [...historyChain.map(({ role, content }) => ({ role, content })), { role: 'user', content }];
         console.log('[ChatPane] Sending payload to API:', apiMessages); // LOG 7: API payload confirmed
 
-        // Add a blank assistant message to start streaming into
+        // Add user message to state for UI
+        const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+
+        // Add a blank assistant message to begin streaming
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id });
         setStreamingMessageId(assistantMessage.id);
 
