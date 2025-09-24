@@ -7,6 +7,7 @@ import { Send, Square, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-reac
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstruction } from '@/hooks/useSystemInstruction';
+import SystemInstructionButton from './SystemInstructionButton';
 
 const ChatPane = () => {
     const {
@@ -246,9 +247,12 @@ const ChatPane = () => {
                             <Square className="h-4 w-4" />
                         </Button>
                     ) : (
-                        <Button type="submit" disabled={!input.trim()}>
-                            <Send className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <SystemInstructionButton />
+                            <Button type="submit" disabled={!input.trim()}>
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        </div>
                     )}
                 </form>
             </div>
