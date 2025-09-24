@@ -17,6 +17,7 @@ export interface SystemInstructionsContextValue {
     updateInstruction: (id: string, title: string, content: string, options?: { activate?: boolean }) => Promise<void>;
     deleteInstruction: (id: string) => Promise<void>;
     setActiveInstruction: (id: string) => Promise<void>;
+    overwriteActiveInstruction: (content: string) => Promise<void>;
     refreshActiveFromSupabase: () => Promise<void>;
 }
 
