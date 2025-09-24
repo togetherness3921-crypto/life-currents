@@ -1,20 +1,63 @@
 // This component will render a single chat message bubble
-import React from 'react';
+import React, { useState } from 'react';
 import { Message } from '@/hooks/useChat';
 import { Button } from '../ui/button';
-import { Pencil } from 'lucide-react';
+import { Pencil, Save, X } from 'lucide-react';
+import { Textarea } from '../ui/textarea';
 
 interface ChatMessageProps {
   message: Message;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content);
+
   const isUser = message.role === 'user';
+
+  const handleSave = () => {
+    // TODO: Implement forking logic here
+    console.log('Saving edited message:', editText);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditText(message.content);
+    setIsEditing(false);
+  };
+
+  if (isUser && isEditing) {
+    return (
+      <div className="flex justify-end">
+        <div className="w-[75%] space-y-2">
+          <Textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            className="w-full"
+          />
+          <div className="flex justify-end gap-2">
+            <Button onClick={handleCancel} variant="ghost" size="sm">
+              <X className="mr-1 h-4 w-4" /> Cancel
+            </Button>
+            <Button onClick={handleSave} size="sm">
+              <Save className="mr-1 h-4 w-4" /> Save & Submit
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`group relative flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       {isUser && (
         <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button variant="ghost" size="icon" className="h-6 w-6">
+          <Button
+            onClick={() => setIsEditing(true)}
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+          >
             <Pencil className="h-3 w-3" />
           </Button>
         </div>
