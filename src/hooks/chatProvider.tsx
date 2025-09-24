@@ -40,6 +40,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             const parsed: MessageStore = JSON.parse(storedMessages);
             Object.keys(parsed).forEach((id) => {
                 parsed[id].children = parsed[id].children || [];
+                parsed[id].toolCalls = parsed[id].toolCalls || [];
             });
             return parsed;
         } catch (e) {
@@ -100,7 +101,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     const addMessage = useCallback(
         (
             threadId: string,
-            messageData: Omit<Message, 'id' | 'children'>
+            messageData: Omit<Message, 'id' | 'children' | 'toolCalls'>
         ): Message => {
             const newId = uuidv4();
             const newMessage: Message = {
@@ -157,22 +158,21 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         []
     );
 
-    const updateMessage = useCallback((messageId: string, updates: Partial<Message>) => {
-        console.log(`[ChatProvider] Updating message ${messageId} with updates:`, updates);
+    const updateMessage = useCallback((messageId: string, updates: Partial<Message> | ((message: Message) => Partial<Message>)) => {
         setMessages((prev) => {
             const current = prev[messageId];
             if (!current) {
                 console.warn(`[ChatProvider] Attempted to update non-existent message: ${messageId}`);
                 return prev;
             }
+            const appliedUpdates = typeof updates === 'function' ? updates(current) : updates;
             const updatedMessages = {
                 ...prev,
                 [messageId]: {
                     ...current,
-                    ...updates,
+                    ...appliedUpdates,
                 },
             };
-            console.log(`[ChatProvider] Message ${messageId} updated in state store.`);
             return updatedMessages;
         });
     }, []);
