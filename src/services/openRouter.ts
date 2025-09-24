@@ -105,10 +105,8 @@ export const getGeminiResponse = async (
                     }
                     if (toolCallDelta) {
                         let status: ToolCallDelta['status'] = 'start';
-                        if (toolCallDelta.type === 'function') {
-                            status = toolCallDelta.function?.arguments ? 'arguments' : 'start';
-                        } else if (toolCallDelta.type === 'response') {
-                            status = 'finish';
+                        if (toolCallDelta.function?.arguments) {
+                            status = 'arguments';
                         }
                         const toolUpdate: ToolCallDelta = {
                             id: toolCallDelta.id,
