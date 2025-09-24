@@ -20,14 +20,19 @@ type PendingRequest = {
     reject: (error: unknown) => void;
 };
 
+type ToolContentItem =
+    | { type: 'text'; text: string }
+    | { type: 'raw'; value: unknown }
+    | { type: string; [key: string]: unknown };
+
 interface ToolCallResultPayload {
     output?: {
-        content?: Array<
-            | { type: 'text'; text: string }
-            | { type: 'raw'; value: unknown }
-        >;
+        content?: ToolContentItem[];
         isError?: boolean;
     };
+    content?: ToolContentItem[];
+    isError?: boolean;
+    text?: string;
 }
 
 export class McpClient {
@@ -100,18 +105,22 @@ export class McpClient {
         });
         const result: ToolExecutionResult = {};
         const output = rawResult?.output;
-        if (output?.isError) {
+        if (output?.isError || rawResult?.isError) {
             result.isError = true;
         }
-        if (output?.content) {
-            const textPieces = output.content
-                .filter((item): item is { type: 'text'; text: string } => item.type === 'text')
+
+        const contentItems = output?.content ?? rawResult?.content;
+        if (contentItems && Array.isArray(contentItems)) {
+            const textPieces = contentItems
+                .filter((item): item is { type: 'text'; text: string } => item.type === 'text' && typeof item.text === 'string')
                 .map((item) => item.text);
             if (textPieces.length > 0) {
                 result.content = textPieces.join('\n');
             } else {
-                result.content = output.content;
+                result.content = contentItems;
             }
+        } else if (typeof rawResult?.text === 'string') {
+            result.content = rawResult.text;
         }
         return result;
     }
