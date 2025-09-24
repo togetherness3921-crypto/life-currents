@@ -87,7 +87,7 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         } finally {
             setLoading(false);
         }
-    }, [presets]);
+    }, []);
 
     useEffect(() => {
         refreshActiveFromSupabase();
