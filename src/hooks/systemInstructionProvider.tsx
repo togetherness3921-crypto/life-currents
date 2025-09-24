@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
     SystemInstruction,
@@ -6,23 +6,6 @@ import {
     SystemInstructionContextValue,
     createDefaultInstruction,
 } from './systemInstructionContext';
-
-export interface SystemInstruction {
-    id: string;
-    title: string;
-    content: string;
-    createdAt: string;
-    updatedAt: string;
-}
-
-interface SystemInstructionContextValue {
-    instructions: SystemInstruction[];
-    activeInstructionId: string;
-    activeInstruction?: SystemInstruction;
-    setActiveInstruction: (id: string) => void;
-    createInstruction: () => string;
-    updateInstruction: (id: string, updates: { title?: string; content?: string }) => void;
-}
 
 const STORAGE_KEY = 'system_instruction_store_v1';
 
