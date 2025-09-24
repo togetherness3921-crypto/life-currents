@@ -57,7 +57,6 @@ function autoCommitAndPush() {
       exec('git clean -fd', () => console.log('🧹 Cleaned up problematic files'));
     }
 
-    // Stage all changes (but avoid problematic files)
     exec('git add --all', (error, stdout, stderr) => {
       if (error) {
         console.error('❌ Error staging files:', error.message);
@@ -71,10 +70,8 @@ function autoCommitAndPush() {
         return;
       }
 
-      // Check if there are actually changes to commit
       exec('git diff --cached --quiet', (diffError) => {
         if (diffError) {
-          // There are changes, so commit them
           const timestamp = new Date().toLocaleString();
           const commitMessage = `Auto-sync: ${timestamp}`;
 
@@ -87,13 +84,13 @@ function autoCommitAndPush() {
 
             console.log(`✅ Committed: ${commitMessage}`);
 
-            // Check if there are database migrations to deploy
             checkAndDeployDatabase(() => {
-              // Push to GitHub after database deployment
-              exec('git push --force origin main', (pushError) => {
+              exec('git push --force origin master', (pushError, pushStdout, pushStderr) => {
                 if (pushError) {
                   console.error('❌ Error pushing to GitHub:', pushError.message);
-                  console.log('🔄 Will retry on next change...');
+                  if (pushStderr.includes('error: src refspec')) {
+                    console.log('ℹ️  It looks like the branch name differs locally. Skipping push until resolved.');
+                  }
                   pendingChanges = false;
                   return;
                 }
