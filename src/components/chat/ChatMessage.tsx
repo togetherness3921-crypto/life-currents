@@ -1,6 +1,6 @@
 // This component will render a single chat message bubble
 import React, { useState } from 'react';
-import { Message } from '@/hooks/useChat';
+import { Message } from '@/hooks/chatProvider';
 import { Button } from '../ui/button';
 import { Pencil, Save, X } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
