@@ -181,19 +181,14 @@ const ChatPane = () => {
                             },
                         ];
 
-                        await getGeminiResponse(followUpMessages, {
-                            onStream: (update) => {
-                                console.log('[ChatPane][Follow-up streaming update]', update);
-                                if (update.content !== undefined) {
-                                    updateMessage(assistantMessage.id, { content: update.content });
-                                }
-                                if (update.reasoning !== undefined) {
-                                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
-                                }
-                            },
-                            signal: controller.signal,
+                        const followUp = await getGeminiResponse(followUpMessages, {
+                            stream: false,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                         });
+                        console.log('[ChatPane][Follow-up response]', followUp);
+                        if (followUp.content) {
+                            updateMessage(assistantMessage.id, { content: followUp.content });
+                        }
                     } catch (toolError) {
                         console.error('Tool execution failed', toolError);
                         updateMessage(assistantMessage.id, (current) => {
