@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
     ChatContext,
@@ -8,10 +8,49 @@ import {
     ChatContextValue,
 } from './chatProviderContext';
 
+const THREADS_STORAGE_KEY = 'chat_threads';
+const MESSAGES_STORAGE_KEY = 'chat_messages';
+
 export const ChatProvider = ({ children }: { children: ReactNode }) => {
-    const [threads, setThreads] = useState<ChatThread[]>([]);
-    const [messages, setMessages] = useState<MessageStore>({});
+    const [threads, setThreads] = useState<ChatThread[]>(() => {
+        try {
+            const storedThreads = localStorage.getItem(THREADS_STORAGE_KEY);
+            return storedThreads ? JSON.parse(storedThreads) : [];
+        } catch (e) {
+            console.error("Failed to parse threads from localStorage", e);
+            return [];
+        }
+    });
+
+    const [messages, setMessages] = useState<MessageStore>(() => {
+        try {
+            const storedMessages = localStorage.getItem(MESSAGES_STORAGE_KEY);
+            return storedMessages ? JSON.parse(storedMessages) : {};
+        } catch (e) {
+            console.error("Failed to parse messages from localStorage", e);
+            return {};
+        }
+    });
+
     const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
+    // Save to localStorage whenever threads or messages change
+    useEffect(() => {
+        try {
+            localStorage.setItem(THREADS_STORAGE_KEY, JSON.stringify(threads));
+        } catch (e) {
+            console.error("Failed to save threads to localStorage", e);
+        }
+    }, [threads]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+        } catch (e) {
+            console.error("Failed to save messages to localStorage", e);
+        }
+    }, [messages]);
+
 
     const getThread = (id: string) => threads.find((t) => t.id === id);
 
