@@ -9,7 +9,10 @@ interface ApiMessage {
     content: string;
 }
 
-export const getGeminiResponse = async (messages: ApiMessage[]) => {
+export const getGeminiResponse = async (
+    messages: ApiMessage[],
+    onStream: (chunk: string) => void
+): Promise<string> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
@@ -22,24 +25,47 @@ export const getGeminiResponse = async (messages: ApiMessage[]) => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-pro-2.5", // Using Gemini 2.5 Pro as requested
+                model: "google/gemini-pro-2.5",
                 messages: messages,
+                stream: true, // Enable streaming
             }),
         });
 
-        if (!response.ok) {
+        if (!response.ok || !response.body) {
             const errorBody = await response.text();
             throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody}`);
         }
 
-        const data = await response.json();
-        const assistantMessage = data.choices[0]?.message?.content;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
 
-        if (!assistantMessage) {
-            throw new Error("Invalid response structure from API");
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+            for (const line of lines) {
+                const jsonStr = line.replace('data: ', '');
+                if (jsonStr === '[DONE]') {
+                    break;
+                }
+                try {
+                    const parsed = JSON.parse(jsonStr);
+                    const content = parsed.choices[0]?.delta?.content;
+                    if (content) {
+                        fullResponse += content;
+                        onStream(fullResponse); // Send the accumulating full response
+                    }
+                } catch (e) {
+                    console.error("Error parsing stream chunk:", e);
+                }
+            }
         }
-
-        return assistantMessage;
+        
+        return fullResponse;
 
     } catch (error) {
         console.error("Error fetching from OpenRouter:", error);
