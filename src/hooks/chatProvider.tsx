@@ -33,7 +33,7 @@ interface ChatContextType {
     updateMessage: (messageId: string, newContent: string) => void;
 }
 
-const ChatContext = createContext<ChatContextType | undefined>(undefined);
+export const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider = ({ children }: { children: ReactNode }) => {
     const [threads, setThreads] = useState<ChatThread[]>([]);
@@ -120,12 +120,4 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             {children}
         </ChatContext.Provider>
     );
-};
-
-export const useChatContext = () => {
-    const context = useContext(ChatContext);
-    if (context === undefined) {
-        throw new Error('useChat must be used within a ChatProvider');
-    }
-    return context;
 };
