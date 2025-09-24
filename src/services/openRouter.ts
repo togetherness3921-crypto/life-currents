@@ -94,3 +94,37 @@ export const getGeminiResponse = async (
         throw error;
     }
 };
+
+export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string | null> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: "google/gemini-2.5-pro",
+                messages,
+                stream: false,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody}`);
+        }
+
+        const data = await response.json();
+        const title = data.choices?.[0]?.message?.content?.trim();
+        if (!title) return null;
+        return title.length > 60 ? title.slice(0, 57) + '...' : title;
+    } catch (error) {
+        console.error('Title suggestion failed:', error);
+        return null;
+    }
+};
