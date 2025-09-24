@@ -3,7 +3,6 @@
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Define the structure for messages sent to the API
 export type ApiMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string }
@@ -19,17 +18,22 @@ export interface ApiToolDefinition {
     };
 }
 
-interface StreamCallbacks {
-    onStream: (update: { content?: string; reasoning?: string; toolCall?: ToolCallDelta }) => void;
-    signal?: AbortSignal;
-}
-
 export interface ToolCallDelta {
     id: string;
     name?: string;
     arguments?: string;
     index?: number;
-    status?: 'start' | 'arguments' | 'finish';
+    status: 'start' | 'arguments' | 'finish';
+}
+
+interface StreamCallbacks {
+    onStream: (update: { content?: string; reasoning?: string; toolCall?: ToolCallDelta }) => void;
+    signal?: AbortSignal;
+}
+
+export interface GeminiResponse {
+    content: string;
+    raw: unknown;
 }
 
 export const getGeminiResponse = async (
@@ -39,7 +43,7 @@ export const getGeminiResponse = async (
         signal,
         tools,
     }: StreamCallbacks & { tools?: ApiToolDefinition[] }
-): Promise<{ content: string; raw: any }> => {
+): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
@@ -69,7 +73,7 @@ export const getGeminiResponse = async (
         const decoder = new TextDecoder();
         let fullResponse = "";
         let reasoningBuffer = "";
-        let rawResponse: any = null;
+        let rawResponse: unknown = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -89,7 +93,7 @@ export const getGeminiResponse = async (
                     const delta = parsed.choices?.[0]?.delta;
                     const content = delta?.content;
                     const reasoning = delta?.reasoning;
-                    const toolCall = delta?.tool_calls?.[0];
+                    const toolCallDelta = delta?.tool_calls?.[0];
 
                     if (content) {
                         fullResponse += content;
@@ -99,8 +103,15 @@ export const getGeminiResponse = async (
                         reasoningBuffer += reasoning;
                         onStream({ reasoning: reasoningBuffer });
                     }
-                    if (toolCall) {
-                        onStream({ toolCall: toolCall });
+                    if (toolCallDelta) {
+                        const toolUpdate: ToolCallDelta = {
+                            id: toolCallDelta.id,
+                            name: toolCallDelta.function?.name,
+                            arguments: toolCallDelta.function?.arguments,
+                            index: toolCallDelta.index,
+                            status: toolCallDelta.type === 'function' && toolCallDelta.function?.arguments ? 'arguments' : 'start',
+                        };
+                        onStream({ toolCall: toolUpdate });
                     }
                 } catch (e) {
                     console.error("Error parsing stream chunk:", e);
@@ -126,7 +137,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
     }
 
     const conversationText = messages
-        .map((m) => `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
+        .map((m) => m.role === 'tool' ? `${m.role.toUpperCase()}: ${m.name}` : `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
         .join('\n');
 
     try {
