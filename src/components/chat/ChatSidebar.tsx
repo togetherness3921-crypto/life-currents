@@ -1,12 +1,12 @@
 import React from 'react';
-import { useChat } from '@/hooks/useChat';
+import { useChatContext } from '@/hooks/chatProvider';
 import { Button } from '../ui/button';
 import { PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 const ChatSidebar = () => {
-    const { threads, activeThreadId, setActiveThreadId, createThread } = useChat();
+    const { threads, activeThreadId, setActiveThreadId, createThread } = useChatContext();
 
     return (
         <div className="flex h-full flex-col bg-card p-2 text-card-foreground">

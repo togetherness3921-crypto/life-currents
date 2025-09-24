@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Send, Loader2, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
-import { useChat } from '@/hooks/useChat';
+import { useChatContext } from '@/hooks/chatProvider';
 
 const ChatPane = () => {
     const {
@@ -16,7 +16,7 @@ const ChatPane = () => {
         getMessageChain,
         updateMessage,
         messages: allMessages // get all messages for parent lookup
-    } = useChat();
+    } = useChatContext();
 
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
