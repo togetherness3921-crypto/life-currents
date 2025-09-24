@@ -9,7 +9,8 @@ import {
     AccordionContent,
     AccordionItem,
     AccordionTrigger,
-} from "@/components/ui/accordion"
+} from "@/components/ui/accordion";
+import { Badge } from '../ui/badge';
 
 interface ChatMessageProps {
     message: Message;
@@ -92,9 +93,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave,
                 </div>
                 {(isStreaming || (message.thinking && message.thinking.trim().length > 0)) && (
                     <Accordion type="single" collapsible className="w-full mb-2">
-                        <AccordionItem value="item-1" className="border-b border-muted-foreground/20">
-                            <AccordionTrigger className="text-xs">Thinking...</AccordionTrigger>
-                            <AccordionContent className="text-xs whitespace-pre-wrap">
+                        <AccordionItem value="item-1" className="rounded-md border border-muted-foreground/20 bg-background/80">
+                            <AccordionTrigger className="px-3 py-2 text-xs font-medium">
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="uppercase tracking-wide text-[10px]">Thinking</Badge>
+                                    <span className="text-muted-foreground">View reasoning</span>
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="px-3 pb-3 text-xs whitespace-pre-wrap">
                                 {message.thinking?.trim().length ? message.thinking : 'The model is generating a response...'}
                             </AccordionContent>
                         </AccordionItem>
