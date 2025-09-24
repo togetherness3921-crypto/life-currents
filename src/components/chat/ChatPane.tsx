@@ -8,12 +8,20 @@ import { ScrollArea } from '../ui/scroll-area';
 import { useChat } from '@/hooks/useChat';
 
 const ChatPane = () => {
-  const { activeThreadId, getThread, addMessage, createThread } = useChat();
+  const { 
+    activeThreadId, 
+    getThread, 
+    addMessage, 
+    createThread,
+    getMessageChain 
+  } = useChat();
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const activeThread = activeThreadId ? getThread(activeThreadId) : null;
+  const messages = getMessageChain(activeThread?.leafMessageId || null);
 
   useEffect(() => {
     // Scroll to bottom when new messages are added
@@ -23,7 +31,7 @@ const ChatPane = () => {
         behavior: 'smooth',
       });
     }
-  }, [activeThread?.messages?.length]);
+  }, [messages.length]);
 
 
   const handleSubmit = async (e: FormEvent) => {
@@ -31,28 +39,33 @@ const ChatPane = () => {
     if (!input.trim() || isLoading) return;
 
     let currentThreadId = activeThreadId;
-    // If there's no active thread, create a new one
     if (!currentThreadId) {
       currentThreadId = createThread();
     }
     
     const userInput = input;
     setInput('');
-
-    // Add user message to state immediately
-    addMessage(currentThreadId, { role: 'user', content: userInput });
     setIsLoading(true);
 
     try {
-      const thread = getThread(currentThreadId);
-      const apiMessages = thread ? thread.messages.map(({ role, content }) => ({ role, content })) : [];
+      // Get the current message chain to determine the parent of the new message
+      const currentChain = getMessageChain(getThread(currentThreadId)?.leafMessageId || null);
+      const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
+
+      // Add user message
+      const userMessage = addMessage(currentThreadId, { role: 'user', content: userInput, parentId });
+      
+      const apiMessages = [...currentChain, userMessage].map(({ role, content }) => ({ role, content }));
       
       const assistantResponse = await getGeminiResponse(apiMessages);
 
-      addMessage(currentThreadId, { role: 'assistant', content: assistantResponse });
+      addMessage(currentThreadId, { role: 'assistant', content: assistantResponse, parentId: userMessage.id });
     } catch (error) {
       const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-      addMessage(currentThreadId, { role: 'assistant', content: errorMessage });
+      // Find the last message to append the error message to
+      const currentChain = getMessageChain(getThread(currentThreadId)?.leafMessageId || null);
+      const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
+      addMessage(currentThreadId, { role: 'assistant', content: errorMessage, parentId });
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +86,7 @@ const ChatPane = () => {
     <div className="flex h-full flex-col bg-background">
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         <div className="flex flex-col gap-4">
-          {activeThread.messages.map((msg) => (
+          {messages.map((msg) => (
             <ChatMessage key={msg.id} message={msg} />
           ))}
         </div>
