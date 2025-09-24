@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
     ChatContext,
@@ -57,9 +57,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }, [messages]);
 
 
-    const getThread = (id: string) => threads.find((t) => t.id === id);
+    const getThread = useCallback((id: string) => threads.find((t) => t.id === id), [threads]);
 
-    const getMessageChain = (leafId: string | null): Message[] => {
+    const getMessageChain = useCallback((leafId: string | null): Message[] => {
         if (!leafId) return [];
         const chain: Message[] = [];
         let currentId: string | null = leafId;
@@ -70,9 +70,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             currentId = message.parentId;
         }
         return chain;
-    };
+    }, [messages]);
 
-    const createThread = () => {
+    const createThread = useCallback(() => {
         const newThread: ChatThread = {
             id: uuidv4(),
             title: 'New Chat',
@@ -82,34 +82,37 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         setThreads((prev) => [...prev, newThread]);
         setActiveThreadId(newThread.id);
         return newThread.id;
-    };
+    }, []);
 
-    const addMessage = (
-        threadId: string,
-        messageData: Omit<Message, 'id'>
-    ): Message => {
-        const newMessage: Message = { ...messageData, id: uuidv4() };
+    const addMessage = useCallback(
+        (
+            threadId: string,
+            messageData: Omit<Message, 'id'>
+        ): Message => {
+            const newMessage: Message = { ...messageData, id: uuidv4() };
 
-        setMessages((prev) => ({ ...prev, [newMessage.id]: newMessage }));
+            setMessages((prev) => ({ ...prev, [newMessage.id]: newMessage }));
 
-        setThreads((prev) =>
-            prev.map((thread) => {
-                if (thread.id === threadId) {
-                    const chain = getMessageChain(thread.leafMessageId);
-                    const newTitle =
-                        chain.length === 0 && messageData.role === 'user'
-                            ? `${messageData.content.substring(0, 30)}...`
-                            : thread.title;
+            setThreads((prev) =>
+                prev.map((thread) => {
+                    if (thread.id === threadId) {
+                        const chain = getMessageChain(thread.leafMessageId);
+                        const newTitle =
+                            chain.length === 0 && messageData.role === 'user'
+                                ? `${messageData.content.substring(0, 30)}...`
+                                : thread.title;
 
-                    return { ...thread, title: newTitle, leafMessageId: newMessage.id };
-                }
-                return thread;
-            })
-        );
-        return newMessage;
-    };
+                        return { ...thread, title: newTitle, leafMessageId: newMessage.id };
+                    }
+                    return thread;
+                })
+            );
+            return newMessage;
+        },
+        [getMessageChain]
+    );
 
-    const updateMessage = (messageId: string, newContent: string) => {
+    const updateMessage = useCallback((messageId: string, newContent: string) => {
         setMessages((prev) => {
             if (!prev[messageId]) return prev;
             return {
@@ -120,7 +123,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                 },
             };
         });
-    };
+    }, []);
 
     const value: ChatContextValue = {
         threads,
