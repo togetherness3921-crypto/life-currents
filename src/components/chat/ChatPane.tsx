@@ -3,7 +3,7 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Loader2, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 
@@ -22,6 +22,7 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
@@ -55,21 +56,32 @@ const ChatPane = () => {
         setStreamingMessageId(assistantMessage.id);
 
         try {
-            await getGeminiResponse(apiMessages, (update) => {
-                if (update.content !== undefined) {
-                    updateMessage(assistantMessage.id, { content: update.content });
-                }
-                if (update.reasoning !== undefined) {
-                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
-                }
+            const controller = new AbortController();
+            abortControllerRef.current = controller;
+
+            await getGeminiResponse(apiMessages, {
+                onStream: (update) => {
+                    if (update.content !== undefined) {
+                        updateMessage(assistantMessage.id, { content: update.content });
+                    }
+                    if (update.reasoning !== undefined) {
+                        updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                    }
+                },
+                signal: controller.signal,
             });
 
-        } catch (error) {
-            const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
-            updateMessage(assistantMessage.id, errorMessage);
+        } catch (error: any) {
+            if (error?.name === 'AbortError') {
+                updateMessage(assistantMessage.id, { content: 'Generation cancelled by user.' });
+            } else {
+                const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
+                updateMessage(assistantMessage.id, { content: errorMessage });
+            }
         } finally {
             setIsLoading(false);
             setStreamingMessageId(null);
+            abortControllerRef.current = null;
         }
     };
 
@@ -121,6 +133,12 @@ const ChatPane = () => {
 
         const targetChild = children[index];
         selectBranch(activeThreadId, messageId, targetChild);
+    };
+
+    const handleCancel = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
     };
 
     if (!activeThread) {
@@ -177,13 +195,15 @@ const ChatPane = () => {
                         disabled={isLoading}
                         className="flex-1"
                     />
-                    <Button type="submit" disabled={isLoading || !input.trim()}>
-                        {isLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
+                    {isLoading ? (
+                        <Button type="button" onClick={handleCancel} variant="destructive">
+                            <Square className="h-4 w-4" />
+                        </Button>
+                    ) : (
+                        <Button type="submit" disabled={!input.trim()}>
                             <Send className="h-4 w-4" />
-                        )}
-                    </Button>
+                        </Button>
+                    )}
                 </form>
             </div>
         </div>
