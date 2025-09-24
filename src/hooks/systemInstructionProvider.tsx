@@ -185,7 +185,7 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
             overwriteActiveInstruction,
             refreshActiveFromSupabase,
         };
-    }, [activeInstructionId, createInstruction, deleteInstruction, loading, overwriteActiveInstruction, presets, refreshActiveFromSupabase, saving, setActiveInstruction, updateInstruction]);
+    }, [activeInstruction, activeInstructionId, createInstruction, deleteInstruction, loading, overwriteActiveInstruction, presets, refreshActiveFromSupabase, saving, setActiveInstruction, updateInstruction]);
 
     return (
         <SystemInstructionsContext.Provider value={contextValue}>
