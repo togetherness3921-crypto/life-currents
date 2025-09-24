@@ -150,6 +150,16 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         await persistToSupabase(preset.content);
     }, [presets, persistToSupabase]);
 
+    const overwriteActiveInstruction = useCallback<SystemInstructionsContextValue['overwriteActiveInstruction']>(async (content) => {
+        if (!activeInstructionId) return;
+        setPresets((prev) => prev.map((preset) => (
+            preset.id === activeInstructionId
+                ? { ...preset, content, updatedAt: new Date().toISOString() }
+                : preset
+        )));
+        await persistToSupabase(content);
+    }, [activeInstructionId, persistToSupabase]);
+
     const contextValue = useMemo<SystemInstructionsContextValue>(() => {
         const activeInstruction = activeInstructionId
             ? presets.find((preset) => preset.id === activeInstructionId) ?? null
@@ -172,9 +182,10 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
             updateInstruction,
             deleteInstruction,
             setActiveInstruction,
+            overwriteActiveInstruction,
             refreshActiveFromSupabase,
         };
-    }, [activeInstructionId, createInstruction, deleteInstruction, loading, presets, refreshActiveFromSupabase, saving, setActiveInstruction, updateInstruction]);
+    }, [activeInstructionId, createInstruction, deleteInstruction, loading, overwriteActiveInstruction, presets, refreshActiveFromSupabase, saving, setActiveInstruction, updateInstruction]);
 
     return (
         <SystemInstructionsContext.Provider value={contextValue}>
