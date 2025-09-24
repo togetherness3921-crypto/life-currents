@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Send, Loader2, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
-import { useChatContext } from '@/hooks/chatProvider';
+import { useChatContext } from '@/hooks/useChat';
 
 const ChatPane = () => {
     const {
