@@ -45,6 +45,8 @@ export const getGeminiResponse = async (
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
+            console.log('[API Service] Received Raw Chunk:', chunk); // LOG 1: Raw data from stream
+
             const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
 
             for (const line of lines) {
@@ -57,6 +59,8 @@ export const getGeminiResponse = async (
                     const content = parsed.choices[0]?.delta?.content;
                     if (content) {
                         fullResponse += content;
+                        console.log('[API Service] Parsed Content:', content); // LOG 2: Parsed token
+                        console.log('[API Service] Calling onStream with full response:', fullResponse); // LOG 3: Data sent to UI
                         onStream(fullResponse); // Send the accumulating full response
                     }
                 } catch (e) {
