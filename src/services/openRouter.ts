@@ -7,18 +7,39 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 export type ApiMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string }
-    | { role: 'assistant'; content: string };
+    | { role: 'assistant'; content: string }
+    | { role: 'tool'; tool_call_id: string; name: string; content: string };
+
+export interface ApiToolDefinition {
+    type: 'function';
+    function: {
+        name: string;
+        description?: string;
+        parameters: Record<string, unknown>;
+    };
+}
+
+interface StreamCallbacks {
+    onStream: (update: { content?: string; reasoning?: string; toolCall?: ToolCallDelta }) => void;
+    signal?: AbortSignal;
+}
+
+export interface ToolCallDelta {
+    id: string;
+    name?: string;
+    arguments?: string;
+    index?: number;
+    status?: 'start' | 'arguments' | 'finish';
+}
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
     {
         onStream,
         signal,
-    }: {
-        onStream: (update: { content?: string; reasoning?: string }) => void;
-        signal?: AbortSignal;
-    }
-): Promise<string> => {
+        tools,
+    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+): Promise<{ content: string; raw: any }> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
@@ -31,9 +52,10 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro", // Using Gemini 2.5 Pro as requested
-                messages: messages,
-                stream: true, // Enable streaming
+                model: "google/gemini-2.5-pro",
+                messages,
+                stream: true,
+                tools,
             }),
             signal,
         });
@@ -47,14 +69,13 @@ export const getGeminiResponse = async (
         const decoder = new TextDecoder();
         let fullResponse = "";
         let reasoningBuffer = "";
+        let rawResponse: any = null;
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            console.log('[API Service] Received Raw Chunk:', chunk); // LOG 1: Raw data from stream
-
             const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
 
             for (const line of lines) {
@@ -64,18 +85,22 @@ export const getGeminiResponse = async (
                 }
                 try {
                     const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices[0]?.delta?.content;
-                    const reasoning = parsed.choices[0]?.delta?.reasoning;
+                    rawResponse = parsed;
+                    const delta = parsed.choices?.[0]?.delta;
+                    const content = delta?.content;
+                    const reasoning = delta?.reasoning;
+                    const toolCall = delta?.tool_calls?.[0];
+
                     if (content) {
                         fullResponse += content;
-                        console.log('[API Service] Parsed Content:', content); // LOG 2: Parsed token
-                        console.log('[API Service] Calling onStream with full response:', fullResponse); // LOG 3: Data sent to UI
                         onStream({ content: fullResponse });
                     }
                     if (reasoning) {
                         reasoningBuffer += reasoning;
-                        console.log('[API Service] Parsed Reasoning:', reasoning);
                         onStream({ reasoning: reasoningBuffer });
+                    }
+                    if (toolCall) {
+                        onStream({ toolCall: toolCall });
                     }
                 } catch (e) {
                     console.error("Error parsing stream chunk:", e);
@@ -83,12 +108,12 @@ export const getGeminiResponse = async (
             }
         }
 
-        return fullResponse;
+        return { content: fullResponse, raw: rawResponse };
 
     } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
             console.warn('Streaming request aborted by user.');
-            return '';
+            return { content: '', raw: null };
         }
         console.error("Error fetching from OpenRouter:", error);
         throw error;
@@ -101,7 +126,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
     }
 
     const conversationText = messages
-        .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+        .map((m) => `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
         .join('\n');
 
     try {
