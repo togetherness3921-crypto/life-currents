@@ -60,7 +60,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isStreaming, onSave 
             {isUser && (
                 <div className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 pr-2 opacity-50 transition-opacity hover:opacity-100">
                     <Button
-                        onClick={() => setIsEditing(true)} 
+                        onClick={() => setIsEditing(true)}
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
