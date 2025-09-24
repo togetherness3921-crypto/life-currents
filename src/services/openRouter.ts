@@ -104,11 +104,12 @@ export const getGeminiResponse = async (
                         onStream({ reasoning: reasoningBuffer });
                     }
                     if (toolCallDelta) {
-                        const status: ToolCallDelta['status'] = toolCallDelta.type === 'function'
-                            ? toolCallDelta.function?.arguments
-                                ? 'arguments'
-                                : 'start'
-                            : 'finish';
+                        let status: ToolCallDelta['status'] = 'start';
+                        if (toolCallDelta.type === 'function') {
+                            status = toolCallDelta.function?.arguments ? 'arguments' : 'start';
+                        } else if (toolCallDelta.type === 'response') {
+                            status = 'finish';
+                        }
                         const toolUpdate: ToolCallDelta = {
                             id: toolCallDelta.id,
                             name: toolCallDelta.function?.name,
