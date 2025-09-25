@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/run-with-rollup-env.mjs build",
-    "build:dev": "node scripts/run-with-rollup-env.mjs build --mode development",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "auto-sync": "concurrently --names \"VITE,ROOT_SYNC,SUB_SYNC,SUPABASE\" -c \"bgBlue.bold,bgMagenta.bold,bgCyan.bold,bgGreen.bold\" \"npm:dev\" \"node auto-sync.cjs\" \"(cd remote-mcp-server-authless && node auto-sync.js)\" \"npm:sync:supabase\"",
@@ -96,8 +96,5 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
     "vite-plugin-eslint": "^1.8.1"
-  },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.24.0"
   }
 }
