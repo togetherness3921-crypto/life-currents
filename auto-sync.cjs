@@ -1,9 +1,20 @@
 const fs = require('fs');
 const { exec } = require('child_process');
 const chokidar = require('chokidar');
+const path = require('path');
 
 console.log('[life-currents] 🚀 Auto-sync process started...');
 console.log('💡 Tip: Press Ctrl+C to stop auto-sync');
+
+const nvmrcPath = path.join(__dirname, '.nvmrc');
+if (fs.existsSync(nvmrcPath)) {
+  try {
+    fs.unlinkSync(nvmrcPath);
+    console.log('Successfully deleted .nvmrc file.');
+  } catch (err) {
+    console.error('Error deleting .nvmrc file:', err);
+  }
+}
 
 // Ignore node_modules, .git, and other unnecessary directories
 const watcher = chokidar.watch('.', {
