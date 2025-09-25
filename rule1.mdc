@@ -1,0 +1,7 @@
+# Agent Error Handling Protocol
+
+When observing an error in the AI agent's behavior, the following protocol must be followed:
+
+1.  **Prioritize Prompt-Based Correction:** Remember that the remote MCP worker auto-syncs commits to GitHub and deploys through Cloudflare; manual `wrangler deploy` runs aren’t needed unless the automation has failed. Do not introduce behavioral fallbacks—changes must deterministically address the root issue.
+
+2.  **Rollback Erroneous Database Changes:** Do not manually "fix" incorrect data the agent has written to the database.
