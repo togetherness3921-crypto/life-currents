@@ -55,88 +55,99 @@ let pendingChanges = false;
 function autoCommitAndPush() {
   if (!pendingChanges) return;
 
-  console.log('📝 Auto-committing changes...');
-
-  // First, clean up any potential problematic files
-  exec('git clean -fd --dry-run', (cleanError, cleanOutput) => {
-    if (cleanOutput && cleanOutput.includes('nul')) {
-      exec('git clean -fd', () => console.log('🧹 Cleaned up problematic files'));
+  console.log('🔄 Checking for remote updates...');
+  exec('git fetch origin', (fetchError) => {
+    if (fetchError) {
+      console.error('❌ Error fetching from remote:', fetchError.message);
+      pendingChanges = false;
+      return;
     }
 
-    // Stage all changes (but avoid problematic files)
-    exec('git add --all', (error, stdout, stderr) => {
-      if (error) {
-        console.error('❌ Error staging files:', error.message);
-        if (stderr.includes('nul')) {
-          console.log('🔧 Attempting to fix nul file issue...');
-          exec('rm -f nul', () => {
-            console.log('🗑️ Removed problematic nul file');
-            pendingChanges = false;
-          });
-        }
+    exec('git status -uno', (statusError, statusStdout) => {
+      if (statusError) {
+        console.error('❌ Error getting git status:', statusError.message);
+        pendingChanges = false;
         return;
       }
 
-      // Check if there are actually changes to commit
-      exec('git diff --cached --quiet', (diffError) => {
-        if (diffError) {
-          // There are changes, so commit them
-          const timestamp = new Date().toLocaleString();
-          const commitMessage = `Auto-sync: ${timestamp}`;
+      if (statusStdout.includes('Your branch is behind')) {
+        console.log('🌍 Remote is ahead. Pulling changes...');
+        exec('git pull --rebase origin main', (pullError) => {
+          if (pullError) {
+            console.error('❌ Error pulling changes:', pullError.message);
+            console.log('❗️ Please resolve any conflicts manually.');
+            pendingChanges = false;
+            return;
+          }
+          console.log('✅ Successfully pulled remote changes.');
+          proceedToCommitAndPush();
+        });
+      } else {
+        console.log('👍 Local is up-to-date. Proceeding with commit...');
+        proceedToCommitAndPush();
+      }
+    });
+  });
+}
 
-          exec(`git commit -m "${commitMessage}"`, (commitError) => {
-            if (commitError) {
-              console.error('❌ Error committing:', commitError.message);
-              pendingChanges = false;
-              return;
-            }
+function proceedToCommitAndPush() {
+  console.log('📝 Auto-committing changes...');
 
-            console.log(`✅ Committed: ${commitMessage}`);
+  exec('git add --all', (error) => {
+    if (error) {
+      console.error('❌ Error staging files:', error.message);
+      pendingChanges = false;
+      return;
+    }
 
-            // Check if there are database migrations to deploy
-            checkAndDeployDatabase(() => {
-              // Push to GitHub after database deployment
-              exec('git push --force origin main', (pushError) => {
-                if (pushError) {
-                  console.error('❌ Error pushing to GitHub:', pushError.message);
-                  console.log('🔄 Will retry on next change...');
-                  pendingChanges = false;
-                  return;
-                }
+    exec('git diff --cached --quiet', (diffError) => {
+      if (diffError) {
+        const timestamp = new Date().toLocaleString();
+        const commitMessage = `Auto-sync: ${timestamp}`;
 
-                console.log('🌟 Successfully pushed to GitHub!');
+        exec(`git commit -m "${commitMessage}"`, (commitError) => {
+          if (commitError) {
+            console.error('❌ Error committing:', commitError.message);
+            pendingChanges = false;
+            return;
+          }
+
+          console.log(`✅ Committed: ${commitMessage}`);
+
+          checkAndDeployDatabase(() => {
+            exec('git push origin main', (pushError) => {
+              if (pushError) {
+                console.error('❌ Error pushing to GitHub:', pushError.message);
                 pendingChanges = false;
-              });
+                return;
+              }
+              console.log('🌟 Successfully pushed to GitHub!');
+              pendingChanges = false;
             });
           });
-        } else {
-          console.log('📄 No changes to commit');
-          pendingChanges = false;
-        }
-      });
+        });
+      } else {
+        console.log('📄 No changes to commit');
+        pendingChanges = false;
+      }
     });
   });
 }
 
 function checkAndDeployDatabase(callback) {
-  // Check if there are changes in the supabase/migrations folder
   exec('git diff HEAD~1 --name-only | grep "supabase/migrations"', (error, stdout) => {
-    if (stdout.trim()) {
+    if (stdout && stdout.trim()) {
       console.log('🗄️ Database migrations detected, deploying to Supabase...');
-
-      // Deploy database changes
-      exec('npm run db:deploy', (dbError, dbStdout, dbStderr) => {
+      exec('npm run db:push', (dbError, dbStdout, dbStderr) => {
         if (dbError) {
           console.error('❌ Error deploying to Supabase:', dbError.message);
           if (dbStderr) console.error('DB Error details:', dbStderr);
         } else {
           console.log('✅ Database deployed to Supabase!');
-          console.log('📝 Types regenerated!');
         }
         callback();
       });
     } else {
-      // No database changes, proceed with GitHub push
       callback();
     }
   });
