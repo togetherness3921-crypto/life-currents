@@ -11,7 +11,7 @@ export interface ToolCallState {
 
 export interface Message {
     id: string;
-    parentId: string | null;
+    parentId: string | null; 
     role: 'user' | 'assistant';
     content: string;
     thinking?: string;
