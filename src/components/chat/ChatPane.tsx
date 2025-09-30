@@ -200,19 +200,28 @@ const ChatPane = () => {
                             },
                         ];
 
-                        await getGeminiResponse(followUpMessages, {
-                            onStream: (update) => {
-                                console.log('[ChatPane][Follow-up streaming update]', update);
-                                if (update.content !== undefined) {
-                                    updateMessage(assistantMessage.id, { content: update.content });
-                                }
-                                if (update.reasoning !== undefined) {
-                                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
-                                }
-                            },
-                            signal: controller.signal,
-                            tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
-                        });
+                        console.log('[ChatPane][Follow-up] Sending follow-up request to Gemini with tool result');
+                        console.log('[ChatPane][Follow-up] Messages payload:', JSON.stringify(followUpMessages, null, 2));
+
+                        try {
+                            const followUpResult = await getGeminiResponse(followUpMessages, {
+                                onStream: (update) => {
+                                    console.log('[ChatPane][Follow-up streaming update]', update);
+                                    if (update.content !== undefined) {
+                                        updateMessage(assistantMessage.id, { content: update.content });
+                                    }
+                                    if (update.reasoning !== undefined) {
+                                        updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                                    }
+                                },
+                                signal: controller.signal,
+                                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            });
+                            console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
+                        } catch (followUpError) {
+                            console.error('[ChatPane][Follow-up] Follow-up request failed:', followUpError);
+                            throw followUpError;
+                        }
                     } catch (toolError) {
                         console.error('Tool execution failed', toolError);
                         updateMessage(assistantMessage.id, (current) => {
