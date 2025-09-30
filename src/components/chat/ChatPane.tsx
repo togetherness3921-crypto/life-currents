@@ -121,6 +121,13 @@ const ChatPane = () => {
             console.log('[ChatPane][Raw Gemini response]', raw);
             const toolCallRequests = raw?.choices?.[0]?.message?.tool_calls;
             if (toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
+                console.log('[ChatPane][MCP] Processing', toolCallRequests.length, 'tool calls');
+
+                // Collect all tool call messages and tool result messages
+                const allToolCallMessages: ApiToolCall[] = [];
+                const allToolResultMessages: Array<{ role: 'tool'; tool_call_id: string; content: string }> = [];
+
+                // Execute all tool calls
                 for (const toolCallRequest of toolCallRequests) {
                     const toolId = toolCallRequest.id;
                     const toolName = toolCallRequest.function?.name;
@@ -177,51 +184,22 @@ const ChatPane = () => {
                             return { toolCalls };
                         });
 
-                        const toolCallMessage: ApiToolCall = {
+                        // Collect tool call message for this tool
+                        allToolCallMessages.push({
                             id: toolId,
                             type: 'function',
                             function: {
                                 name: toolName,
                                 arguments: toolCallRequest.function?.arguments ?? JSON.stringify(toolArgs),
                             },
-                        };
+                        });
 
-                        const followUpMessages = [
-                            ...apiMessages,
-                            {
-                                role: 'assistant' as const,
-                                content: '',
-                                tool_calls: [toolCallMessage],
-                            },
-                            {
-                                role: 'tool' as const,
-                                tool_call_id: toolId,
-                                content: toolContent,
-                            },
-                        ];
-
-                        console.log('[ChatPane][Follow-up] Sending follow-up request to Gemini with tool result');
-                        console.log('[ChatPane][Follow-up] Messages payload:', JSON.stringify(followUpMessages, null, 2));
-
-                        try {
-                            const followUpResult = await getGeminiResponse(followUpMessages, {
-                                onStream: (update) => {
-                                    console.log('[ChatPane][Follow-up streaming update]', update);
-                                    if (update.content !== undefined) {
-                                        updateMessage(assistantMessage.id, { content: update.content });
-                                    }
-                                    if (update.reasoning !== undefined) {
-                                        updateMessage(assistantMessage.id, { thinking: update.reasoning });
-                                    }
-                                },
-                                signal: controller.signal,
-                                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
-                            });
-                            console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
-                        } catch (followUpError) {
-                            console.error('[ChatPane][Follow-up] Follow-up request failed:', followUpError);
-                            throw followUpError;
-                        }
+                        // Collect tool result message for this tool
+                        allToolResultMessages.push({
+                            role: 'tool' as const,
+                            tool_call_id: toolId,
+                            content: toolContent,
+                        });
                     } catch (toolError) {
                         console.error('Tool execution failed', toolError);
                         updateMessage(assistantMessage.id, (current) => {
@@ -236,6 +214,59 @@ const ChatPane = () => {
                             }
                             return { toolCalls };
                         });
+
+                        // Still add the error as a tool result
+                        allToolCallMessages.push({
+                            id: toolId,
+                            type: 'function',
+                            function: {
+                                name: toolName ?? toolId,
+                                arguments: toolCallRequest.function?.arguments ?? '{}',
+                            },
+                        });
+                        allToolResultMessages.push({
+                            role: 'tool' as const,
+                            tool_call_id: toolId,
+                            content: `Error: ${toolError instanceof Error ? toolError.message : 'Tool call failed'}`,
+                        });
+                    }
+                }
+
+                // Now send ONE follow-up request with ALL tool calls and results
+                if (allToolCallMessages.length > 0) {
+                    console.log('[ChatPane][Follow-up] Sending follow-up request with', allToolCallMessages.length, 'tool results');
+
+                    const followUpMessages = [
+                        ...apiMessages,
+                        {
+                            role: 'assistant' as const,
+                            content: '',
+                            tool_calls: allToolCallMessages,
+                        },
+                        ...allToolResultMessages,
+                    ];
+
+                    console.log('[ChatPane][Follow-up] Messages payload:', JSON.stringify(followUpMessages, null, 2));
+
+                    try {
+                        const followUpResult = await getGeminiResponse(followUpMessages, {
+                            onStream: (update) => {
+                                console.log('[ChatPane][Follow-up streaming update]', update);
+                                if (update.content !== undefined) {
+                                    updateMessage(assistantMessage.id, { content: update.content });
+                                }
+                                if (update.reasoning !== undefined) {
+                                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                                }
+                            },
+                            signal: controller.signal,
+                            tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                        });
+                        console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
+                    } catch (followUpError) {
+                        console.error('[ChatPane][Follow-up] Follow-up request failed:', followUpError);
+                        const errorMessage = `Follow-up request failed: ${followUpError instanceof Error ? followUpError.message : 'Unknown error'}`;
+                        updateMessage(assistantMessage.id, { content: errorMessage });
                     }
                 }
             }
