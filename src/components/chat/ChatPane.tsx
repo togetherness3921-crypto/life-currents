@@ -3,12 +3,16 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Workflow } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SystemInstructionDialog from './SystemInstructionDialog';
 import { useMcp } from '@/hooks/useMcp';
+import ModelSelectionDialog from './ModelSelectionDialog';
+import { Badge } from '../ui/badge';
+import { DEFAULT_MODEL, getDisplayNameForModel, recordModelUsage, SELECTED_MODEL_STORAGE_KEY } from '@/lib/modelUsage';
+import type { ModelOption } from '@/types/models';
 
 const ChatPane = () => {
     const {
@@ -27,10 +31,33 @@ const ChatPane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
+    const [usageVersion, setUsageVersion] = useState(0);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
+    const [selectedModel, setSelectedModel] = useState<ModelOption>(() => {
+        if (typeof window === 'undefined') {
+            return DEFAULT_MODEL;
+        }
+        try {
+            const stored = window.localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+            if (stored) {
+                const parsed = JSON.parse(stored) as ModelOption;
+                if (parsed && parsed.id) {
+                    return {
+                        id: parsed.id,
+                        name: parsed.name ?? getDisplayNameForModel(parsed.id),
+                        description: parsed.description,
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load stored model preference:', error);
+        }
+        return DEFAULT_MODEL;
+    });
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -46,6 +73,24 @@ const ChatPane = () => {
         }
     }, [messages.length, streamingMessageId]);
 
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, JSON.stringify(selectedModel));
+        } catch (error) {
+            console.warn('Failed to persist selected model preference:', error);
+        }
+    }, [selectedModel]);
+
+    const handleModelSelect = (model: ModelOption) => {
+        setSelectedModel({
+            id: model.id,
+            name: model.name ?? getDisplayNameForModel(model.id),
+            description: model.description,
+        });
+        setModelDialogOpen(false);
+    };
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
@@ -80,6 +125,9 @@ const ChatPane = () => {
         try {
             const controller = new AbortController();
             abortControllerRef.current = controller;
+
+            recordModelUsage(selectedModel.id);
+            setUsageVersion((prev) => prev + 1);
 
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
@@ -116,6 +164,7 @@ const ChatPane = () => {
                 },
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                model: selectedModel.id,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -261,6 +310,7 @@ const ChatPane = () => {
                             },
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            model: selectedModel.id,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -280,7 +330,7 @@ const ChatPane = () => {
                         { role: 'user' as const, content },
                         { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
                     ];
-                    const title = await getTitleSuggestion(actingMessages);
+                    const title = await getTitleSuggestion(actingMessages, selectedModel.id);
                     if (title) {
                         updateThreadTitle(activeThreadId!, title);
                     }
@@ -427,6 +477,12 @@ const ChatPane = () => {
                 </div>
             </ScrollArea>
             <div className="border-t p-4">
+                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Next response model</span>
+                    <Badge variant="secondary" className="bg-muted text-foreground">
+                        {selectedModel.name ?? selectedModel.id}
+                    </Badge>
+                </div>
                 <form onSubmit={handleSubmit} className="flex items-center gap-2">
                     <Input
                         value={input}
@@ -435,6 +491,16 @@ const ChatPane = () => {
                         disabled={isLoading}
                         className="flex-1"
                     />
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setModelDialogOpen(true)}
+                        className="h-10 w-10 p-0 bg-muted text-black hover:bg-muted/80"
+                        title="Choose a model"
+                        aria-label="Choose a model"
+                    >
+                        <Workflow className="h-4 w-4" />
+                    </Button>
                     <Button
                         type="button"
                         variant="secondary"
@@ -455,6 +521,13 @@ const ChatPane = () => {
                     )}
                 </form>
             </div>
+            <ModelSelectionDialog
+                open={isModelDialogOpen}
+                onOpenChange={setModelDialogOpen}
+                selectedModelId={selectedModel.id}
+                onSelect={handleModelSelect}
+                usageVersion={usageVersion}
+            />
             <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
         </div>
     );
