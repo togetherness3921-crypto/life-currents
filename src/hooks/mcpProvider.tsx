@@ -1,9 +1,8 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { McpClient } from '@/lib/mcp/client';
+import { MCP_SERVER_BASE } from '@/lib/mcp/constants';
 import type { Tool } from '@/lib/mcp/types';
 import { McpContext } from './mcpProviderContext';
-
-const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
 
 interface ActiveSession {
     dispose: () => void;

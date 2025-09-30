@@ -3,11 +3,24 @@
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+export interface ApiToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
+export type ApiTextContent = { type: 'text'; text: string };
+export type ApiContentPart = ApiTextContent | { type: string; [key: string]: unknown };
+export type ApiMessageContent = string | ApiContentPart[];
+
 export type ApiMessage =
-    | { role: 'system'; content: string }
-    | { role: 'user'; content: string }
-    | { role: 'assistant'; content: string }
-    | { role: 'tool'; tool_call_id: string; name: string; content: string };
+    | { role: 'system'; content: ApiMessageContent }
+    | { role: 'user'; content: ApiMessageContent }
+    | { role: 'assistant'; content: ApiMessageContent; tool_calls?: ApiToolCall[] }
+    | { role: 'tool'; tool_call_id: string; name: string; content: ApiMessageContent };
 
 export interface ApiToolDefinition {
     type: 'function';
@@ -35,6 +48,24 @@ export interface GeminiResponse {
     content: string;
     raw: unknown;
 }
+
+const extractText = (content: unknown): string => {
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content
+            .map((item) => {
+                if (!item) return '';
+                if (typeof item === 'string') return item;
+                if (typeof item === 'object' && 'text' in item && typeof (item as { text?: unknown }).text === 'string') {
+                    return (item as { text: string }).text;
+                }
+                return '';
+            })
+            .join('');
+    }
+    return '';
+};
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
@@ -95,12 +126,14 @@ export const getGeminiResponse = async (
                     const reasoning = delta?.reasoning;
                     const toolCallDelta = delta?.tool_calls?.[0];
 
-                    if (content) {
-                        fullResponse += content;
+                    const textContent = extractText(content);
+                    if (textContent) {
+                        fullResponse += textContent;
                         onStream({ content: fullResponse });
                     }
-                    if (reasoning) {
-                        reasoningBuffer += reasoning;
+                    const reasoningText = extractText(reasoning);
+                    if (reasoningText) {
+                        reasoningBuffer += reasoningText;
                         onStream({ reasoning: reasoningBuffer });
                     }
                     if (toolCallDelta) {
@@ -144,7 +177,13 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
     }
 
     const conversationText = messages
-        .map((m) => m.role === 'tool' ? `${m.role.toUpperCase()}: ${m.name}` : `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
+        .map((m) => {
+            if (m.role === 'tool') {
+                return `${m.role.toUpperCase()}: ${m.name}`;
+            }
+            const content = 'content' in m ? extractText(m.content) : '';
+            return `${m.role.toUpperCase()}: ${content}`;
+        })
         .join('\n');
 
     try {
