@@ -7,10 +7,26 @@ import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } fr
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
-import SystemInstructionDialog from './SystemInstructionDialog';
+import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
 import ModelSelectionDialog from './ModelSelectionDialog';
+import { useContextSettings } from '@/hooks/useContextSettings';
+import { Message } from '@/hooks/chatProviderContext';
+import { ContextMode } from '@/hooks/contextSettingsProviderContext';
+
+const applyContextLimit = (messages: Message[], mode: ContextMode, customCount: number): Message[] => {
+    switch (mode) {
+        case 'last8':
+            return messages.slice(-8);
+        case 'custom': {
+            if (customCount <= 0) return [];
+            return messages.slice(-customCount);
+        }
+        default:
+            return messages;
+    }
+};
 
 const ChatPane = () => {
     const {
@@ -28,13 +44,14 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-    const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isSettingsDialogOpen, setSettingsDialogOpen] = useState(false);
     const [isModelDialogOpen, setModelDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
     const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
+    const { mode: contextMode, customMessageCount } = useContextSettings();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -56,11 +73,12 @@ const ChatPane = () => {
         console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId });
 
         // Build payload for API using existing conversation + new user input
-        const historyChain = parentId ? getMessageChain(parentId) : [];
+        const fullHistoryChain = parentId ? getMessageChain(parentId) : [];
+        const limitedHistoryChain = applyContextLimit(fullHistoryChain, contextMode, customMessageCount);
         const systemPrompt = activeInstruction?.content;
         const apiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-            ...historyChain.map(({ role, content }) => ({ role, content })),
+            ...limitedHistoryChain.map(({ role, content }) => ({ role, content })),
             { role: 'user' as const, content },
         ];
         const toolDefinitions: ApiToolDefinition[] = availableTools.map((tool) => ({
@@ -84,6 +102,8 @@ const ChatPane = () => {
         try {
             const controller = new AbortController();
             abortControllerRef.current = controller;
+
+            const transforms = contextMode === 'all-middle-out' ? ['middle-out'] : undefined;
 
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
@@ -121,6 +141,7 @@ const ChatPane = () => {
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                 model: selectedModel.id,
+                transforms,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -267,6 +288,7 @@ const ChatPane = () => {
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                             model: selectedModel.id,
+                            transforms,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -282,7 +304,7 @@ const ChatPane = () => {
                 try {
                     const actingMessages = [
                         ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-                        ...historyChain.map(({ role, content }) => ({ role, content })),
+                        ...limitedHistoryChain.map(({ role, content }) => ({ role, content })),
                         { role: 'user' as const, content },
                         { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
                     ];
@@ -465,7 +487,7 @@ const ChatPane = () => {
                     <Button
                         type="button"
                         variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
+                        onClick={() => setSettingsDialogOpen(true)}
                         className="h-10 w-10 p-0"
                         title="Manage system instructions"
                     >
@@ -482,7 +504,7 @@ const ChatPane = () => {
                     )}
                 </form>
             </div>
-            <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
+            <SettingsDialog open={isSettingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
             <ModelSelectionDialog
                 open={isModelDialogOpen}
                 onOpenChange={setModelDialogOpen}
