@@ -3,10 +3,19 @@
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+export interface ApiToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
 export type ApiMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string }
-    | { role: 'assistant'; content: string }
+    | { role: 'assistant'; content: string; tool_calls?: ApiToolCall[] }
     | { role: 'tool'; tool_call_id: string; name: string; content: string };
 
 export interface ApiToolDefinition {
