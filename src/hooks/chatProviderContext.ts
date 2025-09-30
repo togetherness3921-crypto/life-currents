@@ -35,6 +35,7 @@ export interface ChatContextValue {
     threads: ChatThread[];
     messages: MessageStore;
     activeThreadId: string | null;
+    
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;

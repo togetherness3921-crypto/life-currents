@@ -16,7 +16,7 @@ export type ApiMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string }
     | { role: 'assistant'; content: string; tool_calls?: ApiToolCall[] }
-    | { role: 'tool'; tool_call_id: string; name: string; content: string };
+    | { role: 'tool'; tool_call_id: string; content: string };
 
 export interface ApiToolDefinition {
     type: 'function';
@@ -153,7 +153,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
     }
 
     const conversationText = messages
-        .map((m) => m.role === 'tool' ? `${m.role.toUpperCase()}: ${m.name}` : `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
+        .map((m) => `${m.role.toUpperCase()}: ${'content' in m ? m.content : ''}`)
         .join('\n');
 
     try {

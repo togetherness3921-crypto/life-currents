@@ -196,7 +196,6 @@ const ChatPane = () => {
                             {
                                 role: 'tool' as const,
                                 tool_call_id: toolId,
-                                name: toolName,
                                 content: toolContent,
                             },
                         ];
