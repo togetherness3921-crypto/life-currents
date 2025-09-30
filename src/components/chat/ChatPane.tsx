@@ -1,6 +1,6 @@
 import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition } from '@/services/openRouter';
+import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
@@ -153,10 +153,17 @@ const ChatPane = () => {
                     });
 
                     try {
+                        if (!toolName) {
+                            throw new Error('Tool call did not include a tool name.');
+                        }
+
                         console.log('[ChatPane][MCP] Calling tool', toolName, 'with args', toolArgs);
                         const toolResult = await callTool(toolName, toolArgs);
                         console.log('[ChatPane][MCP] Tool result', toolResult);
-                        const toolContent = JSON.stringify(toolResult?.content ?? '', null, 2);
+                        const toolContent = typeof toolResult?.content === 'string'
+                            ? toolResult.content
+                            : JSON.stringify(toolResult?.content ?? '', null, 2);
+                        const toolContentBlocks = [{ type: 'text' as const, text: toolContent }];
 
                         updateMessage(assistantMessage.id, (current) => {
                             const toolCalls = [...(current.toolCalls || [])];
@@ -171,13 +178,27 @@ const ChatPane = () => {
                             return { toolCalls };
                         });
 
+                        const toolCallMessage: ApiToolCall = {
+                            id: toolId,
+                            type: 'function',
+                            function: {
+                                name: toolName,
+                                arguments: toolCallRequest.function?.arguments ?? JSON.stringify(toolArgs),
+                            },
+                        };
+
                         const followUpMessages = [
                             ...apiMessages,
                             {
+                                role: 'assistant' as const,
+                                content: '',
+                                tool_calls: [toolCallMessage],
+                            },
+                            {
                                 role: 'tool' as const,
                                 tool_call_id: toolId,
-                                name: toolName ?? toolId,
-                                content: [{ type: 'text', text: toolContent }],
+                                name: toolName,
+                                content: toolContentBlocks,
                             },
                         ];
 

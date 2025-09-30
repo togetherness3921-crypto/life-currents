@@ -3,6 +3,26 @@ export interface Transport {
     close(): Promise<void>;
 }
 
+type EventSourceConstructor = new (url: string, eventSourceInitDict?: EventSourceInit) => EventSource;
+
+let eventSourceCtorPromise: Promise<EventSourceConstructor> | null = null;
+
+const resolveEventSource = async (): Promise<EventSourceConstructor> => {
+    if (typeof EventSource !== 'undefined') {
+        return EventSource;
+    }
+    if (!eventSourceCtorPromise) {
+        eventSourceCtorPromise = import('eventsource').then((mod) => {
+            const ctor = (mod as { EventSource?: EventSourceConstructor }).EventSource;
+            if (!ctor) {
+                throw new Error('Failed to load EventSource implementation for MCP transport.');
+            }
+            return ctor;
+        });
+    }
+    return eventSourceCtorPromise;
+};
+
 export interface SSEClientTransportOptions {
     eventSourceInit?: EventSourceInit;
     requestInit?: RequestInit;
@@ -15,14 +35,16 @@ export class SSEClientTransport implements Transport {
 
     constructor(private readonly url: URL, private readonly opts: SSEClientTransportOptions = {}) { }
 
-    async start(onMessage: (message: any) => void, onError: (error: unknown) => void) {
+    async start(onMessage: (message: unknown) => void, onError: (error: unknown) => void) {
         if (this.eventSource) {
             throw new Error('SSEClientTransport already started');
         }
 
+        const EventSourceCtor = await resolveEventSource();
+
         await new Promise<void>((resolve, reject) => {
             let resolved = false;
-            const eventSource = new EventSource(this.url.href, this.opts.eventSourceInit);
+            const eventSource = new EventSourceCtor(this.url.href, this.opts.eventSourceInit);
             this.eventSource = eventSource;
             this.abortController = new AbortController();
 
@@ -65,6 +87,8 @@ export class SSEClientTransport implements Transport {
             eventSource.onerror = (event) => {
                 console.error('[MCP Transport] SSE error', event);
                 onError(event);
+                this.abortController?.abort();
+                eventSource.close();
                 finishReject(event);
             };
         });
