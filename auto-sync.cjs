@@ -51,51 +51,67 @@ const watcher = chokidar.watch('.', {
 
 let timeoutId;
 let pendingChanges = false;
+let isSyncing = false; // Prevents overlapping operations
 
 function autoCommitAndPush() {
-  if (!pendingChanges) return;
+  if (!pendingChanges || isSyncing) return;
+  isSyncing = true;
 
-  console.log('🔄 Checking for remote updates...');
+  pullRemoteChanges(() => {
+    proceedToCommitAndPush();
+  });
+}
+
+function pullRemoteChanges(callback) {
   exec('git fetch origin', (fetchError) => {
     if (fetchError) {
-      console.error('❌ Error fetching from remote:', fetchError.message);
-      pendingChanges = false;
+      console.error('[ROOT] ❌ Error fetching from remote:', fetchError.message);
+      if (callback) {
+        isSyncing = false;
+        callback(fetchError);
+      }
       return;
     }
 
     exec('git status -uno', (statusError, statusStdout) => {
       if (statusError) {
-        console.error('❌ Error getting git status:', statusError.message);
-        pendingChanges = false;
+        console.error('[ROOT] ❌ Error getting git status:', statusError.message);
+        if (callback) {
+          isSyncing = false;
+          callback(statusError);
+        }
         return;
       }
 
       if (statusStdout.includes('Your branch is behind')) {
-        console.log('🌍 Remote is ahead. Pulling changes...');
+        console.log('[ROOT] 🌍 Remote is ahead. Pulling changes...');
         exec('git pull --rebase origin main', (pullError) => {
           if (pullError) {
-            console.error('❌ Error pulling changes:', pullError.message);
-            console.log('❗️ Please resolve any conflicts manually.');
-            pendingChanges = false;
-            return;
+            console.error('[ROOT] ❌ Error pulling changes:', pullError.message);
+          } else {
+            console.log('[ROOT] ✅ Successfully pulled remote changes.');
           }
-          console.log('✅ Successfully pulled remote changes.');
-          proceedToCommitAndPush();
+          if (callback) {
+            isSyncing = false;
+            callback(pullError);
+          }
         });
       } else {
-        console.log('👍 Local is up-to-date. Proceeding with commit...');
-        proceedToCommitAndPush();
+        if (callback) {
+          callback(null); // No error, proceed
+        }
       }
     });
   });
 }
 
 function proceedToCommitAndPush() {
-  console.log('📝 Auto-committing changes...');
+  console.log('[ROOT] 📝 Auto-committing changes...');
 
   exec('git add --all', (error) => {
     if (error) {
-      console.error('❌ Error staging files:', error.message);
+      console.error('[ROOT] ❌ Error staging files:', error.message);
+      isSyncing = false;
       pendingChanges = false;
       return;
     }
@@ -107,27 +123,29 @@ function proceedToCommitAndPush() {
 
         exec(`git commit -m "${commitMessage}"`, (commitError) => {
           if (commitError) {
-            console.error('❌ Error committing:', commitError.message);
+            console.error('[ROOT] ❌ Error committing:', commitError.message);
+            isSyncing = false;
             pendingChanges = false;
             return;
           }
 
-          console.log(`✅ Committed: ${commitMessage}`);
+          console.log(`[ROOT] ✅ Committed: ${commitMessage}`);
 
           checkAndDeployDatabase(() => {
-            exec('git push origin main', (pushError) => {
+            exec('git push origin master:main', (pushError) => { // FIX: Pushing local 'master' to remote 'main'
               if (pushError) {
-                console.error('❌ Error pushing to GitHub:', pushError.message);
-                pendingChanges = false;
-                return;
+                console.error('[ROOT] ❌ Error pushing to GitHub:', pushError.message);
+              } else {
+                console.log('[ROOT] 🌟 Successfully pushed to GitHub!');
               }
-              console.log('🌟 Successfully pushed to GitHub!');
+              isSyncing = false;
               pendingChanges = false;
             });
           });
         });
       } else {
-        console.log('📄 No changes to commit');
+        console.log('[ROOT] 📄 No changes to commit');
+        isSyncing = false;
         pendingChanges = false;
       }
     });
@@ -180,6 +198,14 @@ watcher
     console.log(`🗑️  File deleted: ${path}`);
     scheduleCommit();
   });
+
+// Periodic remote check
+setInterval(() => {
+  if (!isSyncing) {
+    console.log('[ROOT] 定时检查远程更新...'); // Timed check for remote updates...
+    pullRemoteChanges();
+  }
+}, 15000); // Check every 15 seconds
 
 // Graceful shutdown
 process.on('SIGINT', () => {
