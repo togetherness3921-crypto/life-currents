@@ -1,12 +1,12 @@
 // Node-based MCP smoke test
 // This script tests the MCP worker connection independent of the UI
 
-import EventSourceLib from 'eventsource';
+import * as EventSourceLib from 'eventsource';
 import nodeFetch from 'node-fetch';
 
 // Polyfill for Node environment
-global.EventSource = EventSourceLib.default || EventSourceLib;
-global.fetch = nodeFetch.default || nodeFetch;
+global.EventSource = EventSourceLib.default || EventSourceLib.EventSource || EventSourceLib;
+global.fetch = nodeFetch;
 global.crypto = {
   randomUUID: () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
