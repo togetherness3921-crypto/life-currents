@@ -73,6 +73,7 @@
     <script type="module">
         import { McpClient } from '/src/lib/mcp/client.ts';
         import { getGeminiResponse } from '/src/services/openRouter.ts';
+        import { DEFAULT_MODEL_ID } from '/src/hooks/modelSelectionProviderContext.ts';
 
         const OUTPUT = document.getElementById('output');
         const logLine = (message, data, level = 'info') => {
@@ -126,6 +127,7 @@
                 const firstResponse = await getGeminiResponse(messagesPhaseOne, {
                     onStream: (update) => logLine('Phase 1 stream update', update, 'notice'),
                     tools: toolDefinitions,
+                    model: DEFAULT_MODEL_ID,
                 });
                 firstResponseRaw = firstResponse.raw;
                 logLine('Phase 1 raw Gemini response', firstResponseRaw);
@@ -223,6 +225,7 @@
                 const secondResponse = await getGeminiResponse(messagesPhaseTwo, {
                     onStream: (update) => logLine('Phase 2 stream update', update, 'notice'),
                     tools: toolDefinitions,
+                    model: DEFAULT_MODEL_ID,
                 });
                 logLine('Phase 2 raw Gemini response', secondResponse.raw);
                 logLine('Phase 2 aggregated text response', secondResponse.content, 'success');

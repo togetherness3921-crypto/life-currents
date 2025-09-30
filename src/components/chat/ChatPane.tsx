@@ -3,12 +3,14 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Bot } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SystemInstructionDialog from './SystemInstructionDialog';
 import { useMcp } from '@/hooks/useMcp';
+import ModelSelectionDialog from './ModelSelectionDialog';
+import { useModelSelection } from '@/hooks/useModelSelection';
 
 const ChatPane = () => {
     const {
@@ -27,10 +29,12 @@ const ChatPane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
+    const { selectedModel, selectedModelLabel, recordModelUsage } = useModelSelection();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -54,6 +58,8 @@ const ChatPane = () => {
         // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? getMessageChain(parentId) : [];
         const systemPrompt = activeInstruction?.content;
+        const modelForRequest = selectedModel;
+        recordModelUsage(modelForRequest);
         const apiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
             ...historyChain.map(({ role, content }) => ({ role, content })),
@@ -116,6 +122,7 @@ const ChatPane = () => {
                 },
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                model: modelForRequest,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -261,6 +268,7 @@ const ChatPane = () => {
                             },
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            model: modelForRequest,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -280,7 +288,7 @@ const ChatPane = () => {
                         { role: 'user' as const, content },
                         { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
                     ];
-                    const title = await getTitleSuggestion(actingMessages);
+                    const title = await getTitleSuggestion(actingMessages, { model: modelForRequest });
                     if (title) {
                         updateThreadTitle(activeThreadId!, title);
                     }
@@ -427,14 +435,31 @@ const ChatPane = () => {
                 </div>
             </ScrollArea>
             <div className="border-t p-4">
-                <form onSubmit={handleSubmit} className="flex items-center gap-2">
-                    <Input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask anything..."
-                        disabled={isLoading}
-                        className="flex-1"
-                    />
+                <form onSubmit={handleSubmit} className="flex items-end gap-2">
+                    <div className="flex flex-1 flex-col gap-1">
+                        <Input
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Ask anything..."
+                            disabled={isLoading}
+                            className="flex-1"
+                        />
+                        <div className="text-xs text-muted-foreground">
+                            Next model:{' '}
+                            <span className="font-medium text-foreground">
+                                {selectedModelLabel ?? selectedModel}
+                            </span>
+                        </div>
+                    </div>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setModelDialogOpen(true)}
+                        className="h-10 w-10 bg-muted p-0 text-black hover:bg-muted/80"
+                        title="Choose AI model"
+                    >
+                        <Bot className="h-4 w-4" />
+                    </Button>
                     <Button
                         type="button"
                         variant="secondary"
@@ -456,6 +481,7 @@ const ChatPane = () => {
                 </form>
             </div>
             <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
+            <ModelSelectionDialog open={isModelDialogOpen} onOpenChange={setModelDialogOpen} />
         </div>
     );
 };
