@@ -89,7 +89,8 @@ export const getGeminiResponse = async (
         signal,
         tools,
         model,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[]; model: string }
+        transforms,
+    }: StreamCallbacks & { tools?: ApiToolDefinition[]; model: string; transforms?: string[] }
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -111,6 +112,7 @@ export const getGeminiResponse = async (
                     effort: 'high',
                     enabled: true,
                 },
+                transforms,
             }),
             signal,
         });
