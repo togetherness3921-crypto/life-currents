@@ -1,7 +1,10 @@
 // This service will handle API calls to OpenRouter
 
+import { DEFAULT_MODEL_ID } from '@/hooks/modelSelectionProviderContext';
+
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_API_URL = "https://openrouter.ai/api/v1/models";
 
 export interface ApiToolCall {
     id: string;
@@ -40,6 +43,48 @@ interface StreamCallbacks {
     signal?: AbortSignal;
 }
 
+interface GetGeminiResponseOptions extends StreamCallbacks {
+    tools?: ApiToolDefinition[];
+    model?: string;
+}
+
+export interface OpenRouterModel {
+    id: string;
+    name?: string;
+    description?: string;
+    pricing?: {
+        prompt?: string;
+        completion?: string;
+    };
+    context_length?: number;
+    architecture?: Record<string, unknown>;
+}
+
+export const fetchOpenRouterModels = async ({ signal }: { signal?: AbortSignal } = {}): Promise<OpenRouterModel[]> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(MODELS_API_URL, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+        },
+        signal,
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Failed to load models: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data?.data)) {
+        return data.data as OpenRouterModel[];
+    }
+    throw new Error('Unexpected response when fetching models');
+};
+
 export interface GeminiResponse {
     content: string;
     raw: unknown;
@@ -47,17 +92,14 @@ export interface GeminiResponse {
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
-    {
-        onStream,
-        signal,
-        tools,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+    { onStream, signal, tools, model }: GetGeminiResponseOptions
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
 
     try {
+        const resolvedModel = model ?? DEFAULT_MODEL_ID;
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -65,10 +107,14 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: resolvedModel,
                 messages,
                 stream: true,
                 tools,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
             signal,
         });
@@ -181,7 +227,10 @@ export const getGeminiResponse = async (
     }
 };
 
-export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string | null> => {
+export const getTitleSuggestion = async (
+    messages: ApiMessage[],
+    options?: { model?: string }
+): Promise<string | null> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
@@ -191,6 +240,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
         .join('\n');
 
     try {
+        const resolvedModel = options?.model ?? DEFAULT_MODEL_ID;
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -198,7 +248,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: resolvedModel,
                 messages: [
                     {
                         role: 'system',
@@ -211,6 +261,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                     },
                 ],
                 stream: false,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
         });
 
