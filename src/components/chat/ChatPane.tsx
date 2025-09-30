@@ -3,12 +3,15 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Bot } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SystemInstructionDialog from './SystemInstructionDialog';
 import { useMcp } from '@/hooks/useMcp';
+import { Badge } from '../ui/badge';
+import useModelPreference from '@/hooks/useModelPreference';
+import ModelSelectorDialog from './ModelSelectorDialog';
 
 const ChatPane = () => {
     const {
@@ -27,10 +30,15 @@ const ChatPane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
+    const { selectedModel, recordModelUsage } = useModelPreference();
+
+    const activeModelId = selectedModel?.id ?? 'openai/gpt-5';
+    const activeModelLabel = selectedModel?.label ?? activeModelId;
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -81,6 +89,8 @@ const ChatPane = () => {
             const controller = new AbortController();
             abortControllerRef.current = controller;
 
+            recordModelUsage(activeModelId);
+
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
                     console.log('[ChatPane][Streaming update]', update);
@@ -116,6 +126,7 @@ const ChatPane = () => {
                 },
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                modelId: activeModelId,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -261,6 +272,7 @@ const ChatPane = () => {
                             },
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            modelId: activeModelId,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -435,6 +447,18 @@ const ChatPane = () => {
                         disabled={isLoading}
                         className="flex-1"
                     />
+                    <Badge variant="outline" className="whitespace-nowrap">
+                        Model: {activeModelLabel}
+                    </Badge>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setModelDialogOpen(true)}
+                        className="h-10 w-10 p-0 bg-muted text-black hover:bg-muted/80"
+                        title="Choose model"
+                    >
+                        <Bot className="h-4 w-4" />
+                    </Button>
                     <Button
                         type="button"
                         variant="secondary"
@@ -455,6 +479,7 @@ const ChatPane = () => {
                     )}
                 </form>
             </div>
+            <ModelSelectorDialog open={isModelDialogOpen} onOpenChange={setModelDialogOpen} />
             <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
         </div>
     );

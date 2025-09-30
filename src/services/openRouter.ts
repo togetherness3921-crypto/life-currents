@@ -2,6 +2,8 @@
 
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_URL = "https://openrouter.ai/api/v1/models";
+const DEFAULT_MODEL = "google/gemini-2.5-pro";
 
 export interface ApiToolCall {
     id: string;
@@ -40,6 +42,11 @@ interface StreamCallbacks {
     signal?: AbortSignal;
 }
 
+interface CompletionRequestOptions extends StreamCallbacks {
+    tools?: ApiToolDefinition[];
+    modelId?: string;
+}
+
 export interface GeminiResponse {
     content: string;
     raw: unknown;
@@ -47,11 +54,7 @@ export interface GeminiResponse {
 
 export const getGeminiResponse = async (
     messages: ApiMessage[],
-    {
-        onStream,
-        signal,
-        tools,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+    { onStream, signal, tools, modelId }: CompletionRequestOptions
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -65,10 +68,14 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: modelId ?? DEFAULT_MODEL,
                 messages,
                 stream: true,
                 tools,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
             signal,
         });
@@ -198,7 +205,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: DEFAULT_MODEL,
                 messages: [
                     {
                         role: 'system',
@@ -211,6 +218,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                     },
                 ],
                 stream: false,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
         });
 
@@ -227,4 +238,56 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
         console.error('Title suggestion failed:', error);
         return null;
     }
+};
+
+export interface OpenRouterModel {
+    id: string;
+    name?: string;
+    description?: string;
+    context_length?: number;
+}
+
+export const fetchAvailableModels = async (): Promise<OpenRouterModel[]> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(MODELS_URL, {
+        headers: {
+            Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Failed to load models: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const models = Array.isArray(data?.data)
+        ? (data.data as Record<string, unknown>[])
+        : Array.isArray(data?.models)
+            ? (data.models as Record<string, unknown>[])
+            : [];
+
+    if (!Array.isArray(models)) {
+        throw new Error('Unexpected response format when loading models');
+    }
+
+    return models
+        .map((model) => {
+            const idValue = model['id'];
+            const nameValue = model['name'];
+            const descriptionValue = model['description'];
+            const contextLengthValue = model['context_length'];
+
+            return {
+                id: typeof idValue === 'string' ? idValue : '',
+                name: typeof nameValue === 'string' ? nameValue : undefined,
+                description: typeof descriptionValue === 'string' ? descriptionValue : undefined,
+                context_length: typeof contextLengthValue === 'number' ? contextLengthValue : undefined,
+            };
+        })
+        .filter((model) => model.id);
 };
