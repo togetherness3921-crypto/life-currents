@@ -7,10 +7,11 @@ import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } fr
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
-import SystemInstructionDialog from './SystemInstructionDialog';
+import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
 import ModelSelectionDialog from './ModelSelectionDialog';
+import { useConversationContext } from '@/hooks/useConversationContext';
 
 const ChatPane = () => {
     const {
@@ -35,6 +36,7 @@ const ChatPane = () => {
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
     const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
+    const { applyContextToMessages, transforms } = useConversationContext();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -56,7 +58,7 @@ const ChatPane = () => {
         console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId });
 
         // Build payload for API using existing conversation + new user input
-        const historyChain = parentId ? getMessageChain(parentId) : [];
+        const historyChain = parentId ? applyContextToMessages(getMessageChain(parentId)) : [];
         const systemPrompt = activeInstruction?.content;
         const apiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
@@ -121,6 +123,7 @@ const ChatPane = () => {
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                 model: selectedModel.id,
+                transforms: transforms.length > 0 ? transforms : undefined,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -267,6 +270,7 @@ const ChatPane = () => {
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                             model: selectedModel.id,
+                            transforms: transforms.length > 0 ? transforms : undefined,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -482,7 +486,7 @@ const ChatPane = () => {
                     )}
                 </form>
             </div>
-            <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
+            <SettingsDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
             <ModelSelectionDialog
                 open={isModelDialogOpen}
                 onOpenChange={setModelDialogOpen}
