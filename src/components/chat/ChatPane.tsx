@@ -7,10 +7,11 @@ import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } fr
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
-import SystemInstructionDialog from './SystemInstructionDialog';
+import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
 import ModelSelectionDialog from './ModelSelectionDialog';
+import { useContextSettings } from '@/hooks/useContextSettings';
 
 const ChatPane = () => {
     const {
@@ -28,11 +29,12 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-    const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isSettingsDialogOpen, setSettingsDialogOpen] = useState(false);
     const [isModelDialogOpen, setModelDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
+    const { settings: contextSettings } = useContextSettings();
     const { tools: availableTools, callTool } = useMcp();
     const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
 
@@ -57,10 +59,16 @@ const ChatPane = () => {
 
         // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? getMessageChain(parentId) : [];
+        let trimmedHistory = historyChain;
+        if (contextSettings.mode === 'last-8') {
+            trimmedHistory = historyChain.slice(-8);
+        } else if (contextSettings.mode === 'custom') {
+            trimmedHistory = historyChain.slice(-contextSettings.customMessageCount);
+        }
         const systemPrompt = activeInstruction?.content;
         const apiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-            ...historyChain.map(({ role, content }) => ({ role, content })),
+            ...trimmedHistory.map(({ role, content }) => ({ role, content })),
             { role: 'user' as const, content },
         ];
         const toolDefinitions: ApiToolDefinition[] = availableTools.map((tool) => ({
@@ -84,6 +92,8 @@ const ChatPane = () => {
         try {
             const controller = new AbortController();
             abortControllerRef.current = controller;
+
+            const transforms = contextSettings.mode === 'all-middle-out' ? ['middle-out'] : undefined;
 
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
@@ -121,6 +131,7 @@ const ChatPane = () => {
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                 model: selectedModel.id,
+                transforms,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -267,6 +278,7 @@ const ChatPane = () => {
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
                             model: selectedModel.id,
+                            transforms,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -282,7 +294,7 @@ const ChatPane = () => {
                 try {
                     const actingMessages = [
                         ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-                        ...historyChain.map(({ role, content }) => ({ role, content })),
+                        ...trimmedHistory.map(({ role, content }) => ({ role, content })),
                         { role: 'user' as const, content },
                         { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
                     ];
@@ -383,17 +395,29 @@ const ChatPane = () => {
 
     if (!activeThread) {
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center bg-background">
-                <Button onClick={createThread}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    New Chat
-                </Button>
-            </div>
+            <>
+                <div className="flex h-full w-full flex-col items-center justify-center bg-background">
+                    <Button onClick={createThread}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        New Chat
+                    </Button>
+                </div>
+                <SettingsDialog open={isSettingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
+                <ModelSelectionDialog
+                    open={isModelDialogOpen}
+                    onOpenChange={setModelDialogOpen}
+                    onSelectModel={(model) => {
+                        setSelectedModel(model);
+                        setModelDialogOpen(false);
+                    }}
+                />
+            </>
         );
     }
 
     return (
-        <div className="flex h-full flex-col bg-background">
+        <>
+            <div className="flex h-full flex-col bg-background">
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
                 <div className="flex flex-col gap-4">
                     {messages.map((msg) => {
@@ -465,9 +489,9 @@ const ChatPane = () => {
                     <Button
                         type="button"
                         variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
+                        onClick={() => setSettingsDialogOpen(true)}
                         className="h-10 w-10 p-0"
-                        title="Manage system instructions"
+                        title="Open chat settings"
                     >
                         <Cog className="h-4 w-4" />
                     </Button>
@@ -482,7 +506,8 @@ const ChatPane = () => {
                     )}
                 </form>
             </div>
-            <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
+        </div>
+            <SettingsDialog open={isSettingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
             <ModelSelectionDialog
                 open={isModelDialogOpen}
                 onOpenChange={setModelDialogOpen}
@@ -491,7 +516,7 @@ const ChatPane = () => {
                     setModelDialogOpen(false);
                 }}
             />
-        </div>
+        </>
     );
 };
 

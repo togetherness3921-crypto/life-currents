@@ -126,6 +126,7 @@
                 const firstResponse = await getGeminiResponse(messagesPhaseOne, {
                     onStream: (update) => logLine('Phase 1 stream update', update, 'notice'),
                     tools: toolDefinitions,
+                    model: 'google/gemini-2.5-pro',
                 });
                 firstResponseRaw = firstResponse.raw;
                 logLine('Phase 1 raw Gemini response', firstResponseRaw);
@@ -223,6 +224,7 @@
                 const secondResponse = await getGeminiResponse(messagesPhaseTwo, {
                     onStream: (update) => logLine('Phase 2 stream update', update, 'notice'),
                     tools: toolDefinitions,
+                    model: 'google/gemini-2.5-pro',
                 });
                 logLine('Phase 2 raw Gemini response', secondResponse.raw);
                 logLine('Phase 2 aggregated text response', secondResponse.content, 'success');
