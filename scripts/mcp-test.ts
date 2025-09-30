@@ -1,8 +1,8 @@
-import EventSource from 'eventsource';
+import EventSource = require('eventsource');
 import { McpClient } from '../src/lib/mcp/client';
 
 // Polyfill EventSource for the Node.js environment, as McpClient relies on it.
-global.EventSource = EventSource as any;
+(global as any).EventSource = EventSource;
 
 // The base URL for the remote MCP server, copied from the McpProvider.
 const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
