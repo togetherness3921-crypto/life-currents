@@ -89,29 +89,39 @@ export const getGeminiResponse = async (
         signal,
         tools,
         model,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[]; model: string }
+        transforms,
+    }: StreamCallbacks & { tools?: ApiToolDefinition[]; model: string; transforms?: string[] }
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
 
     try {
+        const payload: Record<string, unknown> = {
+            model,
+            messages,
+            stream: true,
+            reasoning: {
+                effort: 'high',
+                enabled: true,
+            },
+        };
+
+        if (tools) {
+            payload.tools = tools;
+        }
+
+        if (transforms && transforms.length > 0) {
+            payload.transforms = transforms;
+        }
+
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                model,
-                messages,
-                stream: true,
-                tools,
-                reasoning: {
-                    effort: 'high',
-                    enabled: true,
-                },
-            }),
+            body: JSON.stringify(payload),
             signal,
         });
 
