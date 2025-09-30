@@ -1,7 +1,11 @@
 // This service will handle API calls to OpenRouter
 
+import type { ModelOption } from '@/types/models';
+
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_API_URL = "https://openrouter.ai/api/v1/models";
+const DEFAULT_MODEL = 'google/gemini-2.5-pro';
 
 export interface ApiToolCall {
     id: string;
@@ -40,6 +44,11 @@ interface StreamCallbacks {
     signal?: AbortSignal;
 }
 
+interface GeminiOptions extends StreamCallbacks {
+    tools?: ApiToolDefinition[];
+    model?: string;
+}
+
 export interface GeminiResponse {
     content: string;
     raw: unknown;
@@ -51,13 +60,15 @@ export const getGeminiResponse = async (
         onStream,
         signal,
         tools,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+        model,
+    }: GeminiOptions
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
 
     try {
+        const targetModel = model ?? DEFAULT_MODEL;
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -65,10 +76,14 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: targetModel,
                 messages,
                 stream: true,
                 tools,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
             signal,
         });
@@ -181,7 +196,10 @@ export const getGeminiResponse = async (
     }
 };
 
-export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string | null> => {
+export const getTitleSuggestion = async (
+    messages: ApiMessage[],
+    model: string = DEFAULT_MODEL
+): Promise<string | null> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
     }
@@ -198,7 +216,7 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model,
                 messages: [
                     {
                         role: 'system',
@@ -211,6 +229,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                     },
                 ],
                 stream: false,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
         });
 
@@ -227,4 +249,34 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
         console.error('Title suggestion failed:', error);
         return null;
     }
+};
+
+export const fetchAvailableModels = async (): Promise<ModelOption[]> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(MODELS_API_URL, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const rawModels = Array.isArray(data?.data) ? data.data : [];
+
+    return rawModels
+        .map((model: any) => ({
+            id: model?.id ?? '',
+            name: model?.name ?? model?.id ?? '',
+            description: model?.description,
+        }))
+        .filter((model: ModelOption) => Boolean(model.id));
 };
