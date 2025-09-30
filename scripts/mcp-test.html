@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Flow Simulation</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.5;
+            padding: 1.5rem;
+            background-color: #fafafa;
+            color: #1a1a1a;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            margin: 0 0 1rem;
+        }
+
+        #output {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            max-height: 80vh;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-family: 'Fira Mono', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .log-line {
+            margin: 0.4rem 0;
+            padding: 0.4rem;
+            border-left: 3px solid #999;
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        .log-line.info {
+            border-color: #4285f4;
+        }
+
+        .log-line.success {
+            border-color: #0f9d58;
+        }
+
+        .log-line.error {
+            border-color: #db4437;
+            background: rgba(219, 68, 55, 0.08);
+        }
+
+        .log-line.notice {
+            border-color: #f4b400;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Chat Flow Simulation</h1>
+    <p>
+        This page mirrors the React app's tool-calling flow end-to-end. Open the developer console for
+        collapsed object logs. All significant steps are logged below in sequence.
+    </p>
+    <div id="output"></div>
+
+    <script type="module">
+        import { McpClient } from '/src/lib/mcp/client.ts';
+        import { getGeminiResponse } from '/src/services/openRouter.ts';
+
+        const OUTPUT = document.getElementById('output');
+        const logLine = (message, data, level = 'info') => {
+            console[level === 'error' ? 'error' : 'log']('[Chat Flow Simulation]', message, data ?? '');
+            const container = document.createElement('div');
+            container.className = `log-line ${level}`;
+            const timestamp = new Date().toLocaleTimeString();
+            container.textContent = `[${timestamp}] ${message}${data !== undefined ? `\n${JSON.stringify(data, null, 2)}` : ''
+                }`;
+            OUTPUT.appendChild(container);
+        };
+
+        const MCP_SERVER_BASE = 'https://remote-mcp-server-authless.harveymushman394.workers.dev';
+        const USER_PROMPT = 'Give me back all of the graph data using the tool.';
+
+        const runSimulation = async () => {
+            logLine('Simulation starting…');
+
+            // -----------------------------------------------------------------
+            // 1. Establish MCP connection and fetch tool metadata
+            // -----------------------------------------------------------------
+            logLine('Connecting to MCP server', MCP_SERVER_BASE, 'notice');
+            const mcpClient = new McpClient(MCP_SERVER_BASE);
+            await mcpClient.connect();
+            logLine('MCP connection established ✅', undefined, 'success');
+
+            logLine('Fetching MCP tool definitions…', undefined, 'notice');
+            const availableTools = await mcpClient.listTools();
+            logLine('Raw tool definitions received', availableTools);
+
+            const toolDefinitions = availableTools.map((tool) => ({
+                type: 'function',
+                function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.inputSchema ?? { type: 'object', properties: {} },
+                },
+            }));
+            logLine('Transformed tool definitions (API payload)', toolDefinitions);
+
+            // -----------------------------------------------------------------
+            // 2. First API call: user message + tool definitions
+            // -----------------------------------------------------------------
+            const messagesPhaseOne = [
+                { role: 'user', content: USER_PROMPT },
+            ];
+            logLine('Phase 1: Sending initial request to Gemini with messages', messagesPhaseOne);
+
+            let firstResponseRaw;
+            try {
+                const firstResponse = await getGeminiResponse(messagesPhaseOne, {
+                    onStream: (update) => logLine('Phase 1 stream update', update, 'notice'),
+                    tools: toolDefinitions,
+                });
+                firstResponseRaw = firstResponse.raw;
+                logLine('Phase 1 raw Gemini response', firstResponseRaw);
+            } catch (error) {
+                logLine('Phase 1 request failed', error, 'error');
+                throw error;
+            }
+
+            const firstChoice = firstResponseRaw && firstResponseRaw.choices && firstResponseRaw.choices[0];
+            if (!firstChoice || !firstChoice.message || !Array.isArray(firstChoice.message.tool_calls) || firstChoice.message.tool_calls.length === 0) {
+                logLine('Phase 1: No tool call detected. Aborting.', firstResponseRaw, 'error');
+                return;
+            }
+
+            const toolCallsFromPhaseOne = firstChoice.message.tool_calls;
+            logLine('Phase 1: Tool call payload received', toolCallsFromPhaseOne);
+
+            // -----------------------------------------------------------------
+            // 3. Execute tool calls via MCP
+            // -----------------------------------------------------------------
+            const toolCallMessages = [];
+            const toolResultMessages = [];
+
+            for (const toolCall of toolCallsFromPhaseOne) {
+                const callId = toolCall.id;
+                const fn = toolCall.function || {};
+                logLine(`Executing tool call ${callId}`, fn, 'notice');
+
+                let parsedArgs = {};
+                try {
+                    parsedArgs = fn.arguments ? JSON.parse(fn.arguments) : {};
+                } catch (error) {
+                    logLine(`Failed to parse arguments for tool ${fn.name}`, error, 'error');
+                }
+
+                try {
+                    const result = await mcpClient.callTool(fn.name, parsedArgs);
+                    logLine(`Tool ${fn.name} returned result`, result, 'success');
+
+                    toolCallMessages.push({
+                        id: callId,
+                        type: 'function',
+                        function: {
+                            name: fn.name,
+                            arguments: fn.arguments || JSON.stringify(parsedArgs),
+                        },
+                    });
+
+                    const toolResponseContent = typeof result?.content === 'string'
+                        ? result.content
+                        : JSON.stringify(result?.content ?? '', null, 2);
+
+                    toolResultMessages.push({
+                        role: 'tool',
+                        tool_call_id: callId,
+                        content: toolResponseContent,
+                    });
+                } catch (error) {
+                    logLine(`Tool ${fn.name} execution failed`, error, 'error');
+                    toolCallMessages.push({
+                        id: callId,
+                        type: 'function',
+                        function: {
+                            name: fn.name || callId,
+                            arguments: fn.arguments || '{}',
+                        },
+                    });
+                    toolResultMessages.push({
+                        role: 'tool',
+                        tool_call_id: callId,
+                        content: `Error: ${error instanceof Error ? error.message : 'Unknown tool failure'}`,
+                    });
+                }
+            }
+
+            logLine('Aggregated tool call messages (assistant payload)', toolCallMessages);
+            logLine('Aggregated tool result messages (tool payload)', toolResultMessages);
+
+            // -----------------------------------------------------------------
+            // 4. Second API call: send tool results back to Gemini
+            // -----------------------------------------------------------------
+            const messagesPhaseTwo = [
+                ...messagesPhaseOne,
+                {
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: toolCallMessages,
+                },
+                ...toolResultMessages,
+            ];
+
+            logLine('Phase 2: Sending follow-up request with full context', messagesPhaseTwo);
+
+            try {
+                const secondResponse = await getGeminiResponse(messagesPhaseTwo, {
+                    onStream: (update) => logLine('Phase 2 stream update', update, 'notice'),
+                    tools: toolDefinitions,
+                });
+                logLine('Phase 2 raw Gemini response', secondResponse.raw);
+                logLine('Phase 2 aggregated text response', secondResponse.content, 'success');
+            } catch (error) {
+                logLine('Phase 2 follow-up request failed', error, 'error');
+                throw error;
+            }
+
+            logLine('Simulation complete ✅', undefined, 'success');
+            await mcpClient.close();
+        };
+
+        runSimulation().catch((error) => {
+            logLine('Simulation failed with error', error, 'error');
+        });
+    </script>
+</body>
+
+</html>
