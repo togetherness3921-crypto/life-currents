@@ -1,4 +1,6 @@
-import EventSource = require('eventsource');
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const EventSource = require('eventsource');
 import { McpClient } from '../src/lib/mcp/client';
 
 // Polyfill EventSource for the Node.js environment, as McpClient relies on it.
