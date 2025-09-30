@@ -3,12 +3,14 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog } from 'lucide-react';
+import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SystemInstructionDialog from './SystemInstructionDialog';
 import { useMcp } from '@/hooks/useMcp';
+import { useModel } from '@/hooks/useModel';
+import ModelSelectionDialog from './ModelSelectionDialog';
 
 const ChatPane = () => {
     const {
@@ -27,10 +29,12 @@ const ChatPane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
+    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
+    const { selectedModelId, selectedModelName, recordModelUsage } = useModel();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -81,6 +85,9 @@ const ChatPane = () => {
             const controller = new AbortController();
             abortControllerRef.current = controller;
 
+            const activeModel = selectedModelId || 'google/gemini-2.5-pro';
+            recordModelUsage(activeModel);
+
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
                     console.log('[ChatPane][Streaming update]', update);
@@ -116,6 +123,7 @@ const ChatPane = () => {
                 },
                 signal: controller.signal,
                 tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                model: activeModel,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
@@ -249,6 +257,8 @@ const ChatPane = () => {
                     console.log('[ChatPane][Follow-up] Messages payload:', JSON.stringify(followUpMessages, null, 2));
 
                     try {
+                        recordModelUsage(activeModel);
+
                         const followUpResult = await getGeminiResponse(followUpMessages, {
                             onStream: (update) => {
                                 console.log('[ChatPane][Follow-up streaming update]', update);
@@ -261,6 +271,7 @@ const ChatPane = () => {
                             },
                             signal: controller.signal,
                             tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            model: activeModel,
                         });
                         console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
@@ -427,7 +438,7 @@ const ChatPane = () => {
                 </div>
             </ScrollArea>
             <div className="border-t p-4">
-                <form onSubmit={handleSubmit} className="flex items-center gap-2">
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2">
                     <Input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
@@ -435,27 +446,48 @@ const ChatPane = () => {
                         disabled={isLoading}
                         className="flex-1"
                     />
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
-                        className="h-10 w-10 p-0"
-                        title="Manage system instructions"
-                    >
-                        <Cog className="h-4 w-4" />
-                    </Button>
-                    {isLoading ? (
-                        <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
-                            <Square className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    )}
+                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-2">
+                        <div
+                            className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium text-muted-foreground"
+                            title={`Current model: ${selectedModelName}`}
+                        >
+                            <span className="uppercase text-[10px] text-muted-foreground">Model</span>
+                            <span className="max-w-[160px] truncate text-foreground">{selectedModelName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setModelDialogOpen(true)}
+                                className="h-10 w-10 rounded-md bg-gray-200 p-0 text-black hover:bg-gray-300"
+                                title="Select AI model"
+                            >
+                                <Sparkles className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => setInstructionDialogOpen(true)}
+                                className="h-10 w-10 p-0"
+                                title="Manage system instructions"
+                            >
+                                <Cog className="h-4 w-4" />
+                            </Button>
+                            {isLoading ? (
+                                <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
+                                    <Square className="h-4 w-4" />
+                                </Button>
+                            ) : (
+                                <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
+                                    <Send className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
+                    </div>
                 </form>
             </div>
             <SystemInstructionDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
+            <ModelSelectionDialog open={isModelDialogOpen} onOpenChange={setModelDialogOpen} />
         </div>
     );
 };

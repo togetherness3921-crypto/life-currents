@@ -2,6 +2,7 @@
 
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_URL = "https://openrouter.ai/api/v1/models";
 
 export interface ApiToolCall {
     id: string;
@@ -45,13 +46,38 @@ export interface GeminiResponse {
     raw: unknown;
 }
 
+type StreamingResponseChunk = {
+    choices?: Array<{
+        delta?: {
+            content?: string;
+            reasoning?: string;
+            tool_calls?: Array<{
+                id: string;
+                function?: {
+                    name?: string;
+                    arguments?: string;
+                };
+                index?: number;
+            }>;
+        };
+        [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+};
+
+export interface GeminiRequestOptions extends StreamCallbacks {
+    tools?: ApiToolDefinition[];
+    model: string;
+}
+
 export const getGeminiResponse = async (
     messages: ApiMessage[],
     {
         onStream,
         signal,
         tools,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+        model,
+    }: GeminiRequestOptions
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -65,10 +91,14 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model,
                 messages,
                 stream: true,
                 tools,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
             signal,
         });
@@ -82,7 +112,7 @@ export const getGeminiResponse = async (
         const decoder = new TextDecoder();
         let fullResponse = "";
         let reasoningBuffer = "";
-        let rawResponse: any = null;
+        let rawResponse: StreamingResponseChunk | null = null;
         const toolCalls: ApiToolCall[] = [];
 
         while (true) {
@@ -98,7 +128,7 @@ export const getGeminiResponse = async (
                     break;
                 }
                 try {
-                    const parsed = JSON.parse(jsonStr);
+                    const parsed = JSON.parse(jsonStr) as StreamingResponseChunk;
                     rawResponse = parsed; // This will be the last chunk
                     const delta = parsed.choices?.[0]?.delta;
                     const content = delta?.content;
@@ -165,7 +195,10 @@ export const getGeminiResponse = async (
                 },
                 finish_reason: 'tool_calls',
             };
-            rawResponse.choices = [finalChoice];
+            rawResponse = {
+                ...rawResponse,
+                choices: [finalChoice],
+            };
         }
 
 
@@ -211,6 +244,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                     },
                 ],
                 stream: false,
+                reasoning: {
+                    enabled: true,
+                    effort: 'high',
+                },
             }),
         });
 
@@ -227,4 +264,50 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
         console.error('Title suggestion failed:', error);
         return null;
     }
+};
+
+export interface OpenRouterModelSummary {
+    id: string;
+    name?: string;
+    description?: string;
+}
+
+export const listAvailableModels = async (): Promise<OpenRouterModelSummary[]> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(MODELS_URL, {
+        headers: {
+            'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Failed to load models: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const rawModels: unknown[] = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.models)
+            ? data.models
+            : [];
+
+    return rawModels
+        .map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const record = item as Record<string, unknown>;
+            const idCandidate = typeof record.id === 'string' ? record.id : typeof record.slug === 'string' ? record.slug : null;
+            if (!idCandidate) return null;
+            const nameCandidate = record.name;
+            const descriptionCandidate = record.description;
+            return {
+                id: idCandidate,
+                name: typeof nameCandidate === 'string' && nameCandidate.trim() ? nameCandidate : undefined,
+                description: typeof descriptionCandidate === 'string' ? descriptionCandidate : undefined,
+            } satisfies OpenRouterModelSummary;
+        })
+        .filter((model): model is OpenRouterModelSummary => Boolean(model));
 };
