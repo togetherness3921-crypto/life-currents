@@ -2,6 +2,7 @@
 
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_API_URL = "https://openrouter.ai/api/v1/models";
 
 export interface ApiToolCall {
     id: string;
@@ -45,13 +46,50 @@ export interface GeminiResponse {
     raw: unknown;
 }
 
+export interface ModelInfo {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+export const getAvailableModels = async (): Promise<ModelInfo[]> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(MODELS_API_URL, {
+        headers: {
+            Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Failed to fetch models: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const models = data?.data;
+
+    if (!Array.isArray(models)) {
+        return [];
+    }
+
+    return models.map((model) => ({
+        id: model?.id,
+        name: model?.name ?? model?.id,
+        description: model?.description,
+    })).filter((model) => typeof model.id === 'string' && model.id.length > 0);
+};
+
 export const getGeminiResponse = async (
     messages: ApiMessage[],
     {
         onStream,
         signal,
         tools,
-    }: StreamCallbacks & { tools?: ApiToolDefinition[] }
+        model,
+    }: StreamCallbacks & { tools?: ApiToolDefinition[]; model: string }
 ): Promise<GeminiResponse> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -65,10 +103,14 @@ export const getGeminiResponse = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model,
                 messages,
                 stream: true,
                 tools,
+                reasoning: {
+                    effort: 'high',
+                    enabled: true,
+                },
             }),
             signal,
         });
@@ -211,6 +253,10 @@ export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string
                     },
                 ],
                 stream: false,
+                reasoning: {
+                    effort: 'high',
+                    enabled: true,
+                },
             }),
         });
 

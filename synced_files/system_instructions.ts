@@ -1,1 +1,1 @@
-export const systemInstructions = `I'm testing system prompts. Say "Neigh Neigh Neigh".`;
+export const systemInstructions = `You are a helpful assistant.`;
