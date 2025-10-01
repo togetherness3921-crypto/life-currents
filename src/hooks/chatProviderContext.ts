@@ -11,12 +11,14 @@ export interface ToolCallState {
 
 export interface Message {
     id: string;
-    parentId: string | null; 
-    role: 'user' | 'assistant';
+    parentId: string | null;
+    role: 'user' | 'assistant' | 'tool' | 'system';
     content: string;
     thinking?: string;
     children: string[];
     toolCalls?: ToolCallState[];
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export type MessageStore = Record<string, Message>;
@@ -35,7 +37,9 @@ export interface ChatContextValue {
     threads: ChatThread[];
     messages: MessageStore;
     activeThreadId: string | null;
-    
+    drafts: Record<string, string>;
+    loading: boolean;
+
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;
@@ -44,6 +48,9 @@ export interface ChatContextValue {
     updateMessage: (messageId: string, updates: Partial<Message>) => void;
     selectBranch: (threadId: string | null, parentId: string | null, childId: string) => void;
     updateThreadTitle: (threadId: string, title: string) => void;
+    getDraft: (threadId: string) => string;
+    updateDraft: (threadId: string, draft: string) => Promise<void>;
+    refreshFromSupabase: () => Promise<void>;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);
