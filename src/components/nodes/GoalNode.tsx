@@ -11,6 +11,7 @@ interface GoalNodeData {
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  highlighted?: boolean;
 }
 
 export default function GoalNode({ data }: { data: GoalNodeData }) {
@@ -49,7 +50,8 @@ export default function GoalNode({ data }: { data: GoalNodeData }) {
           <div className={cn(
             "rounded-full w-32 h-32 flex items-center justify-center border-4 border-node-goal/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-500",
             (data.status === 'completed') ? "bg-green-500" : "bg-node-goal",
-            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60"
+            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60",
+            data.highlighted && "ring-4 ring-primary/60 shadow-[0_0_0_6px_rgba(59,130,246,0.35)]"
           )}>
             <div className="text-center relative">
               <Target className="w-6 h-6 text-white mb-2 mx-auto" />

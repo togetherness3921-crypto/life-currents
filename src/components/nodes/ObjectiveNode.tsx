@@ -12,6 +12,7 @@ interface ObjectiveNodeData {
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  highlighted?: boolean;
 }
 
 const statusIcons = {
@@ -73,7 +74,8 @@ export default function ObjectiveNode({ data }: { data: ObjectiveNodeData }) {
               "rounded-lg border-2 border-blue-400 shadow-lg transition-all duration-500",
               "min-w-[200px] max-w-[300px]",
               isCompleted ? "bg-green-500" : "bg-blue-800",
-              isInProgress && "animate-gentle-pulse border-primary/60"
+              isInProgress && "animate-gentle-pulse border-primary/60",
+              data.highlighted && "ring-4 ring-primary/60 shadow-[0_0_0_6px_rgba(37,99,235,0.35)]"
             )}
           >
             {/* Header */}
