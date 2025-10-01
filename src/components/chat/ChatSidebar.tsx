@@ -3,15 +3,17 @@ import { useChatContext } from '@/hooks/useChat';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { Plus } from 'lucide-react';
 
 const ChatSidebar = () => {
     const { threads, activeThreadId, setActiveThreadId, createThread } = useChatContext();
 
     return (
         <div className="flex h-full flex-col bg-card p-2 text-card-foreground">
-            <div className="p-2">
-                <Button onClick={createThread} className="w-full justify-center">
-                    <span className="text-sm font-medium">New Chat</span>
+            <div className="flex justify-center p-2">
+                <Button onClick={createThread} size="icon" className="h-12 w-12 rounded-full">
+                    <Plus className="h-5 w-5" />
+                    <span className="sr-only">Start a new chat</span>
                 </Button>
             </div>
             <ScrollArea className="flex-1">

@@ -52,6 +52,8 @@ export interface ModelInfo {
     description?: string;
 }
 
+export type ToolIntent = 'TOOL' | 'CONVERSATION';
+
 export const getAvailableModels = async (): Promise<ModelInfo[]> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -80,6 +82,64 @@ export const getAvailableModels = async (): Promise<ModelInfo[]> => {
         name: model?.name ?? model?.id,
         description: model?.description,
     })).filter((model) => typeof model.id === 'string' && model.id.length > 0);
+};
+
+const TOOL_INTENT_MODEL = 'google/gemini-2.5-pro-flash';
+const TOOL_INTENT_PROMPT =
+    'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.';
+
+export const getToolIntent = async (userQuery: string): Promise<ToolIntent> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: TOOL_INTENT_MODEL,
+                stream: false,
+                messages: [
+                    { role: 'system', content: TOOL_INTENT_PROMPT },
+                    { role: 'user', content: userQuery },
+                ],
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Intent classifier error: ${response.status} ${response.statusText} - ${errorBody}`);
+        }
+
+        const data = await response.json();
+        const messageContent = data?.choices?.[0]?.message?.content;
+        let rawText = '';
+        if (typeof messageContent === 'string') {
+            rawText = messageContent;
+        } else if (Array.isArray(messageContent)) {
+            rawText = messageContent
+                .map((part: unknown) => {
+                    if (!part) return '';
+                    if (typeof part === 'string') return part;
+                    if (typeof part === 'object' && 'text' in (part as Record<string, unknown>)) {
+                        const text = (part as { text?: unknown }).text;
+                        return typeof text === 'string' ? text : '';
+                    }
+                    return '';
+                })
+                .join(' ');
+        }
+
+        const verdict = rawText.trim().toUpperCase();
+        return verdict.startsWith('TOOL') ? 'TOOL' : 'CONVERSATION';
+    } catch (error) {
+        console.warn('[OpenRouter] Tool intent classification failed, defaulting to TOOL.', error);
+        return 'TOOL';
+    }
 };
 
 export const getGeminiResponse = async (
