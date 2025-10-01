@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../ui/resizable';
+import React, { useMemo, useState } from 'react';
 import ChatSidebar from './ChatSidebar';
 import ChatPane from './ChatPane';
 import { ChatProvider } from '@/hooks/chatProvider';
@@ -7,51 +6,21 @@ import { SystemInstructionsProvider } from '@/hooks/systemInstructionProvider';
 import { ModelSelectionProvider } from '@/hooks/modelSelectionProvider';
 import { McpProvider } from '@/hooks/mcpProvider';
 import { ConversationContextProvider } from '@/hooks/conversationContextProvider';
-import { fetchLayoutBorders, persistLayoutBorders } from '@/services/layoutPersistence';
+import { cn } from '@/lib/utils';
+import { Button } from '../ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+const SIDEBAR_WIDTH_PERCENT = 40;
 
 const ChatLayout = () => {
-    const DEFAULT_CHAT_LAYOUT = [20, 80] as const;
-    const [chatLayout, setChatLayout] = useState<number[] | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-    useEffect(() => {
-        let isMounted = true;
-        const loadLayout = async () => {
-            const borders = await fetchLayoutBorders();
-            const position = borders['chat-horizontal-1']?.position;
-            const layout = typeof position === 'number'
-                ? [position, 100 - position]
-                : [...DEFAULT_CHAT_LAYOUT];
-            if (!borders['chat-horizontal-1']) {
-                void persistLayoutBorders([
-                    { borderId: 'chat-horizontal-1', axis: 'x' as const, position: layout[0] },
-                ]);
-            }
-            if (isMounted) {
-                setChatLayout(layout);
-            }
-        };
-        void loadLayout();
-        return () => {
-            isMounted = false;
-        };
-    }, []);
-
-    const handleChatLayoutChange = useCallback((sizes: number[]) => {
-        setChatLayout(sizes);
-        void persistLayoutBorders([
-            { borderId: 'chat-horizontal-1', axis: 'x' as const, position: sizes[0] },
-        ]);
-    }, []);
-
-    if (!chatLayout) {
-        return (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-                Loading chat layout...
-            </div>
-        );
-    }
-
-    const resolvedChatLayout = chatLayout;
+    const toggleButtonLeft = useMemo(() => {
+        if (isSidebarOpen) {
+            return `calc(${SIDEBAR_WIDTH_PERCENT}% - 16px)`;
+        }
+        return '0px';
+    }, [isSidebarOpen]);
 
     return (
         <McpProvider>
@@ -59,19 +28,38 @@ const ChatLayout = () => {
                 <SystemInstructionsProvider>
                     <ConversationContextProvider>
                         <ChatProvider>
-                            <ResizablePanelGroup
-                                direction="horizontal"
-                                className="h-full w-full"
-                                onLayout={handleChatLayoutChange}
-                            >
-                                <ResizablePanel defaultSize={resolvedChatLayout[0]} minSize={15} maxSize={30}>
-                                    <ChatSidebar />
-                                </ResizablePanel>
-                                <ResizableHandle withHandle />
-                                <ResizablePanel defaultSize={resolvedChatLayout[1]}>
+                            <div className="relative flex h-full w-full overflow-hidden bg-background">
+                                <div
+                                    className="relative h-full transition-[width] duration-300 ease-in-out"
+                                    style={{ width: isSidebarOpen ? `${SIDEBAR_WIDTH_PERCENT}%` : '0%' }}
+                                >
+                                    <div
+                                        className={cn(
+                                            'absolute inset-0 flex h-full flex-col transition-opacity duration-300 ease-in-out',
+                                            isSidebarOpen
+                                                ? 'pointer-events-auto opacity-100'
+                                                : 'pointer-events-none opacity-0'
+                                        )}
+                                    >
+                                        <ChatSidebar />
+                                    </div>
+                                </div>
+                                <div className="flex-1 transition-all duration-300 ease-in-out">
                                     <ChatPane />
-                                </ResizablePanel>
-                            </ResizablePanelGroup>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="icon"
+                                    className="absolute top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-border bg-card text-card-foreground shadow-md hover:bg-card/90"
+                                    style={{ left: toggleButtonLeft }}
+                                    onClick={() => setIsSidebarOpen((prev) => !prev)}
+                                    aria-label={isSidebarOpen ? 'Collapse chat list' : 'Expand chat list'}
+                                    aria-expanded={isSidebarOpen}
+                                >
+                                    {isSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                </Button>
+                            </div>
                         </ChatProvider>
                     </ConversationContextProvider>
                 </SystemInstructionsProvider>
