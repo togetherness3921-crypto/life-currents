@@ -3,6 +3,11 @@
 const OPEN_ROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_API_URL = "https://openrouter.ai/api/v1/models";
+const TOOL_INTENT_MODEL_ID = 'google/gemini-2.5-pro-flash';
+const TOOL_INTENT_PROMPT =
+    'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.';
+
+export type ToolIntent = 'TOOL' | 'CONVERSATION';
 
 export interface ApiToolCall {
     id: string;
@@ -231,6 +236,57 @@ export const getGeminiResponse = async (
         console.error("Error fetching from OpenRouter:", error);
         throw error;
     }
+};
+
+export const getToolIntent = async (userQuery: string): Promise<ToolIntent> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const payload = {
+        model: TOOL_INTENT_MODEL_ID,
+        stream: false,
+        temperature: 0,
+        messages: [
+            { role: 'system' as const, content: TOOL_INTENT_PROMPT },
+            { role: 'user' as const, content: userQuery },
+        ],
+    };
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Intent classification failed: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const messageContent = data?.choices?.[0]?.message?.content;
+
+    let textContent = '';
+    if (typeof messageContent === 'string') {
+        textContent = messageContent;
+    } else if (Array.isArray(messageContent)) {
+        textContent = messageContent
+            .map((segment: unknown) => {
+                if (typeof segment === 'string') return segment;
+                if (segment && typeof segment === 'object' && 'text' in segment && typeof (segment as any).text === 'string') {
+                    return (segment as any).text;
+                }
+                return '';
+            })
+            .join(' ');
+    }
+
+    const normalized = textContent.trim().toUpperCase();
+    return normalized === 'TOOL' ? 'TOOL' : 'CONVERSATION';
 };
 
 export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string | null> => {

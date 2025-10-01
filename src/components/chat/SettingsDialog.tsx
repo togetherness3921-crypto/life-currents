@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import {
     Dialog,
@@ -18,6 +18,9 @@ import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { useConversationContext } from '@/hooks/useConversationContext';
 import type { ConversationContextMode } from '@/hooks/conversationContextProviderContext';
+import useModelSelection from '@/hooks/useModelSelection';
+import { getAvailableModels, type ModelInfo } from '@/services/openRouter';
+import { Toggle } from '@/components/ui/toggle';
 
 interface SettingsDialogProps {
     open: boolean;
@@ -46,13 +49,51 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         customMessageCount,
         setCustomMessageCount,
     } = useConversationContext();
+    const {
+        selectedModel,
+        setSelectedModel,
+        getUsageScore,
+        getToolIntentCheck,
+        setToolIntentCheck,
+    } = useModelSelection();
 
     const [selectedInstructionId, setSelectedInstructionId] = useState<string | null>(null);
     const [localTitle, setLocalTitle] = useState('');
     const [localContent, setLocalContent] = useState('');
     const [isEditingExisting, setIsEditingExisting] = useState(false);
     const [isCreatingNew, setIsCreatingNew] = useState(false);
-    const [activeTab, setActiveTab] = useState<'system' | 'context'>('system');
+    const [activeTab, setActiveTab] = useState<'system' | 'context' | 'model'>('system');
+    const [models, setModels] = useState<ModelInfo[]>([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
+    const [modelsError, setModelsError] = useState<string | null>(null);
+    const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [modelSearchTerm, setModelSearchTerm] = useState('');
+
+    useEffect(() => {
+        if (!open || modelsLoaded) return;
+        let isMounted = true;
+        setModelsLoading(true);
+        setModelsError(null);
+
+        getAvailableModels()
+            .then((fetched) => {
+                if (!isMounted) return;
+                setModels(fetched);
+                setModelsLoaded(true);
+            })
+            .catch((err) => {
+                if (!isMounted) return;
+                setModelsError(err instanceof Error ? err.message : 'Failed to load models');
+            })
+            .finally(() => {
+                if (!isMounted) return;
+                setModelsLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [modelsLoaded, open]);
 
     const selectedInstruction = useMemo(() => {
         if (isCreatingNew) {
@@ -77,6 +118,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         setIsEditingExisting(false);
         setIsCreatingNew(false);
         setActiveTab('system');
+        setModelSearchTerm('');
     };
 
     const handleSelectInstruction = (id: string) => {
@@ -143,6 +185,27 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
 
     const canSave = localContent.trim().length > 0;
 
+    const filteredModels = useMemo(() => {
+        const normalizedSearch = modelSearchTerm.trim().toLowerCase();
+        const entries = models.map((model) => ({
+            model,
+            score: getUsageScore(model.id),
+        }));
+
+        const sorted = entries.sort((a, b) => b.score - a.score || a.model.name.localeCompare(b.model.name));
+
+        if (!normalizedSearch) {
+            return sorted.map((entry) => entry.model);
+        }
+
+        return sorted
+            .filter((entry) =>
+                entry.model.name.toLowerCase().includes(normalizedSearch) ||
+                entry.model.id.toLowerCase().includes(normalizedSearch)
+            )
+            .map((entry) => entry.model);
+    }, [getUsageScore, modelSearchTerm, models]);
+
     const applyCustomCount = (value: number) => {
         const clamped = Math.min(CUSTOM_MAX, Math.max(CUSTOM_MIN, Math.round(value)));
         setCustomMessageCount(clamped);
@@ -166,10 +229,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                         request.
                     </DialogDescription>
                 </DialogHeader>
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'system' | 'context')}>
-                    <TabsList className="grid w-full grid-cols-2">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'system' | 'context' | 'model')}>
+                    <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="system">System Instructions</TabsTrigger>
                         <TabsTrigger value="context">Context</TabsTrigger>
+                        <TabsTrigger value="model">Model</TabsTrigger>
                     </TabsList>
                     <TabsContent value="system" className="mt-6">
                         <div className="grid gap-6 md:grid-cols-[220px_1fr]">
@@ -249,9 +313,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                     <Textarea
                                         value={displayContent}
                                         onChange={(event) => setLocalContent(event.target.value)}
-                                        rows={20}
+                                        rows={10}
                                         disabled={!isEditingExisting}
-                                        className="font-mono text-sm"
+                                        className="font-mono text-sm resize-none"
                                     />
                                 </div>
                             </div>
@@ -336,6 +400,70 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                     )}
                                 </div>
                             </RadioGroup>
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="model" className="mt-6">
+                        <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                Choose a model and control whether it runs the tool intent check before sending your request.
+                            </p>
+                            <Input
+                                placeholder="Search models..."
+                                value={modelSearchTerm}
+                                onChange={(event) => setModelSearchTerm(event.target.value)}
+                            />
+                            <div className="h-80">
+                                {modelsLoading ? (
+                                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                                        Loading models...
+                                    </div>
+                                ) : modelsError ? (
+                                    <div className="flex h-full items-center justify-center text-sm text-destructive">
+                                        {modelsError}
+                                    </div>
+                                ) : (
+                                    <ScrollArea className="h-full rounded-md border">
+                                        <div className="flex flex-col gap-2 p-2 pr-4">
+                                            {filteredModels.map((model) => {
+                                                const isSelected = model.id === selectedModel.id;
+                                                const toolIntentEnabled = getToolIntentCheck(model.id);
+                                                return (
+                                                    <div
+                                                        key={model.id}
+                                                        className={cn(
+                                                            'flex items-center gap-3 rounded-md border p-3 transition-colors',
+                                                            isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                                                        )}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedModel({ id: model.id, label: model.name })}
+                                                            className="flex flex-1 flex-col items-start text-left"
+                                                        >
+                                                            <span className="text-sm font-medium">{model.name}</span>
+                                                            <span className="text-xs text-muted-foreground">{model.id}</span>
+                                                        </button>
+                                                        <Toggle
+                                                            pressed={toolIntentEnabled}
+                                                            onPressedChange={(pressed) => setToolIntentCheck(model.id, pressed)}
+                                                            aria-label={`Toggle tool intent check for ${model.name}`}
+                                                            variant="outline"
+                                                            className="whitespace-nowrap"
+                                                        >
+                                                            Tool Intent Check
+                                                        </Toggle>
+                                                    </div>
+                                                );
+                                            })}
+                                            {filteredModels.length === 0 && (
+                                                <div className="py-8 text-center text-sm text-muted-foreground">
+                                                    No models matched your search.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                )}
+                            </div>
                         </div>
                     </TabsContent>
                 </Tabs>
