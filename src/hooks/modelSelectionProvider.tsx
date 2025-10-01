@@ -5,6 +5,7 @@ import { ModelSelectionContext, SelectedModel } from './modelSelectionProviderCo
 // timestamps in localStorage and prune entries beyond 72h when accessed.
 
 const STORAGE_KEY = 'model_usage_history_v1';
+const TOOL_INTENT_PREFIX = 'tool_intent_check_';
 export const SEED_MODELS: SelectedModel[] = [
     { id: 'openai/gpt-5', label: 'OpenAI GPT-5' },
     { id: 'google/gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
@@ -49,9 +50,44 @@ const pruneHistory = (history: UsageHistoryEntry[]): UsageHistoryEntry[] => {
     return history.filter((entry) => entry.timestamp >= cutoff);
 };
 
+const readToolIntentSetting = (modelId: string): boolean | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(`${TOOL_INTENT_PREFIX}${modelId}`);
+        if (raw === null) return null;
+        return raw === 'true';
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to read tool intent setting', error);
+        return null;
+    }
+};
+
+const writeToolIntentSetting = (modelId: string, enabled: boolean) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(`${TOOL_INTENT_PREFIX}${modelId}`, enabled ? 'true' : 'false');
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to write tool intent setting', error);
+    }
+};
+
+const getDefaultToolIntent = (modelId: string) => modelId.toLowerCase().includes('gemini');
+
 export const ModelSelectionProvider = ({ children }: { children: ReactNode }) => {
     const [selectedModel, setSelectedModelState] = useState<SelectedModel>(() => SEED_MODELS[1]);
     const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>(() => pruneHistory(readUsageHistory()));
+    const [toolIntentSettings, setToolIntentSettings] = useState<Record<string, boolean>>(() => {
+        const initial: Record<string, boolean> = {};
+        for (const model of SEED_MODELS) {
+            const stored = readToolIntentSetting(model.id);
+            const resolved = stored ?? getDefaultToolIntent(model.id);
+            if (stored === null) {
+                writeToolIntentSetting(model.id, resolved);
+            }
+            initial[model.id] = resolved;
+        }
+        return initial;
+    });
 
     useEffect(() => {
         writeUsageHistory(usageHistory);
@@ -80,6 +116,36 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
         setUsageHistory((prev) => pruneHistory([...prev, { modelId, timestamp: Date.now() }]));
     }, []);
 
+    const ensureToolIntentSetting = useCallback((modelId: string) => {
+        setToolIntentSettings((previous) => {
+            if (typeof previous[modelId] !== 'undefined') {
+                return previous;
+            }
+            const stored = readToolIntentSetting(modelId);
+            const resolved = stored ?? getDefaultToolIntent(modelId);
+            if (stored === null) {
+                writeToolIntentSetting(modelId, resolved);
+            }
+            return { ...previous, [modelId]: resolved };
+        });
+    }, []);
+
+    const getToolIntentEnabled = useCallback(
+        (modelId: string) => {
+            const value = toolIntentSettings[modelId];
+            if (typeof value === 'boolean') {
+                return value;
+            }
+            return getDefaultToolIntent(modelId);
+        },
+        [toolIntentSettings]
+    );
+
+    const setToolIntentEnabled = useCallback((modelId: string, enabled: boolean) => {
+        setToolIntentSettings((previous) => ({ ...previous, [modelId]: enabled }));
+        writeToolIntentSetting(modelId, enabled);
+    }, []);
+
     const contextValue = useMemo(
         () => ({
             selectedModel,
@@ -88,8 +154,21 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
             getUsageCount,
             getUsageScore,
             usageCounts,
+            ensureToolIntentSetting,
+            getToolIntentEnabled,
+            setToolIntentEnabled,
         }),
-        [getUsageCount, getUsageScore, selectedModel, setSelectedModel, recordModelUsage, usageCounts]
+        [
+            getUsageCount,
+            getUsageScore,
+            selectedModel,
+            setSelectedModel,
+            recordModelUsage,
+            usageCounts,
+            ensureToolIntentSetting,
+            getToolIntentEnabled,
+            setToolIntentEnabled,
+        ]
     );
 
     return (
