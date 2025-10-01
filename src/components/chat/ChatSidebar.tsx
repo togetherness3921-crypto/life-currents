@@ -1,4 +1,5 @@
 import React from 'react';
+import { Plus } from 'lucide-react';
 import { useChatContext } from '@/hooks/useChat';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
@@ -9,9 +10,15 @@ const ChatSidebar = () => {
 
     return (
         <div className="flex h-full flex-col bg-card p-2 text-card-foreground">
-            <div className="p-2">
-                <Button onClick={createThread} className="w-full justify-center">
-                    <span className="text-sm font-medium">New Chat</span>
+            <div className="flex justify-center p-2">
+                <Button
+                    onClick={createThread}
+                    variant="secondary"
+                    className="h-10 w-10 rounded-full p-0"
+                    aria-label="Start a new chat"
+                    title="Start a new chat"
+                >
+                    <Plus className="h-5 w-5" />
                 </Button>
             </div>
             <ScrollArea className="flex-1">

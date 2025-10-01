@@ -5,6 +5,7 @@ import { ModelSelectionContext, SelectedModel } from './modelSelectionProviderCo
 // timestamps in localStorage and prune entries beyond 72h when accessed.
 
 const STORAGE_KEY = 'model_usage_history_v1';
+const TOOL_INTENT_STORAGE_PREFIX = 'tool_intent_check_';
 export const SEED_MODELS: SelectedModel[] = [
     { id: 'openai/gpt-5', label: 'OpenAI GPT-5' },
     { id: 'google/gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
@@ -52,10 +53,32 @@ const pruneHistory = (history: UsageHistoryEntry[]): UsageHistoryEntry[] => {
 export const ModelSelectionProvider = ({ children }: { children: ReactNode }) => {
     const [selectedModel, setSelectedModelState] = useState<SelectedModel>(() => SEED_MODELS[1]);
     const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>(() => pruneHistory(readUsageHistory()));
+    const [toolIntentChecks, setToolIntentChecks] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         writeUsageHistory(usageHistory);
     }, [usageHistory]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const initial: Record<string, boolean> = {};
+        try {
+            for (let index = 0; index < window.localStorage.length; index += 1) {
+                const key = window.localStorage.key(index);
+                if (!key || !key.startsWith(TOOL_INTENT_STORAGE_PREFIX)) continue;
+                const modelId = key.slice(TOOL_INTENT_STORAGE_PREFIX.length);
+                initial[modelId] = window.localStorage.getItem(key) === 'true';
+            }
+        } catch (error) {
+            console.warn('[ModelSelection] Failed to read tool intent preferences', error);
+        }
+        setToolIntentChecks(initial);
+    }, []);
+
+    const getDefaultToolIntentValue = useCallback(
+        (modelId: string) => modelId.toLowerCase().includes('gemini'),
+        []
+    );
 
     const usageCounts = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -80,6 +103,32 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
         setUsageHistory((prev) => pruneHistory([...prev, { modelId, timestamp: Date.now() }]));
     }, []);
 
+    const getToolIntentCheck = useCallback(
+        (modelId: string) => {
+            if (modelId in toolIntentChecks) {
+                return toolIntentChecks[modelId];
+            }
+            return getDefaultToolIntentValue(modelId);
+        },
+        [getDefaultToolIntentValue, toolIntentChecks]
+    );
+
+    const setToolIntentCheck = useCallback((modelId: string, enabled: boolean) => {
+        setToolIntentChecks((prev) => {
+            if (prev[modelId] === enabled) {
+                return prev;
+            }
+            return { ...prev, [modelId]: enabled };
+        });
+
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(`${TOOL_INTENT_STORAGE_PREFIX}${modelId}`, String(enabled));
+        } catch (error) {
+            console.warn('[ModelSelection] Failed to persist tool intent preference', error);
+        }
+    }, []);
+
     const contextValue = useMemo(
         () => ({
             selectedModel,
@@ -88,8 +137,21 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
             getUsageCount,
             getUsageScore,
             usageCounts,
+            toolIntentChecks,
+            getToolIntentCheck,
+            setToolIntentCheck,
         }),
-        [getUsageCount, getUsageScore, selectedModel, setSelectedModel, recordModelUsage, usageCounts]
+        [
+            getToolIntentCheck,
+            getUsageCount,
+            getUsageScore,
+            recordModelUsage,
+            selectedModel,
+            setSelectedModel,
+            setToolIntentCheck,
+            toolIntentChecks,
+            usageCounts,
+        ]
     );
 
     return (
