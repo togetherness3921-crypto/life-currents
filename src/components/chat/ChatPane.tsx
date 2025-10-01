@@ -23,10 +23,13 @@ const ChatPane = () => {
         updateMessage,
         selectBranch,
         updateThreadTitle,
-        messages: allMessages // get all messages for parent lookup
+        messages: allMessages, // get all messages for parent lookup
+        drafts,
+        setDraft,
+        clearDraft,
     } = useChatContext();
 
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState<string>(() => (activeThreadId ? drafts[activeThreadId] ?? '' : ''));
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
@@ -41,6 +44,11 @@ const ChatPane = () => {
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
     const messages = getMessageChain(selectedLeafId);
+
+    useEffect(() => {
+        const draftValue = activeThreadId ? drafts[activeThreadId] ?? '' : '';
+        setInput(draftValue);
+    }, [activeThreadId, drafts]);
 
     useEffect(() => {
         // Scroll to bottom when new messages are added
@@ -320,6 +328,9 @@ const ChatPane = () => {
 
         const userInput = input;
         setInput('');
+        if (currentThreadId) {
+            clearDraft(currentThreadId);
+        }
 
         const currentChain = getMessageChain(activeThread?.leafMessageId || null);
         const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
@@ -441,7 +452,13 @@ const ChatPane = () => {
                 <form onSubmit={handleSubmit} className="flex items-center gap-2">
                     <Input
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            setInput(value);
+                            if (activeThreadId) {
+                                setDraft(activeThreadId, value);
+                            }
+                        }}
                         placeholder="Ask anything..."
                         disabled={isLoading}
                         className="flex-1"

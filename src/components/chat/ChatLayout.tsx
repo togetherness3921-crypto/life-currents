@@ -8,19 +8,31 @@ import { ModelSelectionProvider } from '@/hooks/modelSelectionProvider';
 import { McpProvider } from '@/hooks/mcpProvider';
 import { ConversationContextProvider } from '@/hooks/conversationContextProvider';
 
-const ChatLayout = () => {
+type ChatLayoutProps = {
+    sidebarSize?: number;
+    contentSize?: number;
+    onLayout?: (sizes: number[]) => void;
+    layoutKey?: number;
+};
+
+const ChatLayout = ({ sidebarSize = 20, contentSize = 80, onLayout, layoutKey = 0 }: ChatLayoutProps) => {
     return (
         <McpProvider>
             <ModelSelectionProvider>
                 <SystemInstructionsProvider>
                     <ConversationContextProvider>
                         <ChatProvider>
-                            <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-                                <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+                            <ResizablePanelGroup
+                                key={`chat-panels-${layoutKey}`}
+                                direction="horizontal"
+                                onLayout={onLayout}
+                                className="h-full w-full"
+                            >
+                                <ResizablePanel defaultSize={sidebarSize} minSize={15} maxSize={30}>
                                     <ChatSidebar />
                                 </ResizablePanel>
                                 <ResizableHandle withHandle />
-                                <ResizablePanel>
+                                <ResizablePanel defaultSize={contentSize}>
                                     <ChatPane />
                                 </ResizablePanel>
                             </ResizablePanelGroup>
