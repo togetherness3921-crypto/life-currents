@@ -233,6 +233,59 @@ export const getGeminiResponse = async (
     }
 };
 
+export const getToolIntent = async (userQuery: string): Promise<'TOOL' | 'CONVERSATION'> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const payload = {
+        model: 'google/gemini-2.5-pro-flash',
+        messages: [
+            {
+                role: 'system' as const,
+                content:
+                    'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.',
+            },
+            {
+                role: 'user' as const,
+                content: userQuery,
+            },
+        ],
+        stream: false,
+        temperature: 0,
+        max_tokens: 2,
+    };
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Intent classification failed: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content;
+
+    const text = Array.isArray(content)
+        ? content.map((part: unknown) => (typeof part === 'string' ? part : '')).join(' ')
+        : typeof content === 'string'
+            ? content
+            : '';
+
+    const normalized = text.trim().toUpperCase();
+    if (normalized === 'CONVERSATION') {
+        return 'CONVERSATION';
+    }
+    return 'TOOL';
+};
+
 export const getTitleSuggestion = async (messages: ApiMessage[]): Promise<string | null> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
