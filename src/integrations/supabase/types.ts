@@ -7,179 +7,168 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
   }
   public: {
     Tables: {
-      edges: {
-        Row: {
-          animated: boolean | null
-          created_at: string | null
-          id: string
-          source_id: string
-          style: Json | null
-          target_id: string
-          updated_at: string | null
-        }
-        Insert: {
-          animated?: boolean | null
-          created_at?: string | null
-          id: string
-          source_id: string
-          style?: Json | null
-          target_id: string
-          updated_at?: string | null
-        }
-        Update: {
-          animated?: boolean | null
-          created_at?: string | null
-          id?: string
-          source_id?: string
-          style?: Json | null
-          target_id?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "edges_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "nodes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "edges_target_id_fkey"
-            columns: ["target_id"]
-            isOneToOne: false
-            referencedRelation: "nodes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       graph_documents: {
         Row: {
-          data: Json
           id: string
+          document: Json
           updated_at: string | null
         }
         Insert: {
-          data: Json
           id?: string
+          document: Json
           updated_at?: string | null
         }
         Update: {
-          data?: Json
           id?: string
+          document?: Json
           updated_at?: string | null
         }
         Relationships: []
       }
-      graph_state: {
+      system_instructions: {
         Row: {
-          active_node_id: string | null
-          created_at: string
-          id: number
-          updated_at: string
-          viewport_x: number | null
-          viewport_y: number | null
-          viewport_zoom: number | null
+          id: string
+          content: string
+          updated_at: string | null
         }
         Insert: {
-          active_node_id?: string | null
-          created_at?: string
-          id?: number
-          updated_at?: string
-          viewport_x?: number | null
-          viewport_y?: number | null
-          viewport_zoom?: number | null
+          id?: string
+          content: string
+          updated_at?: string | null
         }
         Update: {
-          active_node_id?: string | null
-          created_at?: string
-          id?: number
-          updated_at?: string
-          viewport_x?: number | null
-          viewport_y?: number | null
-          viewport_zoom?: number | null
+          id?: string
+          content?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
-      nodes: {
+      chat_threads: {
         Row: {
+          id: string
+          title: string | null
+          metadata: Json | null
           created_at: string | null
-          expanded: boolean | null
-          id: string
-          label: string
-          position_x: number
-          position_y: number
-          status: string | null
-          type: string
           updated_at: string | null
         }
         Insert: {
+          id?: string
+          title?: string | null
+          metadata?: Json | null
           created_at?: string | null
-          expanded?: boolean | null
-          id: string
-          label: string
-          position_x: number
-          position_y: number
-          status?: string | null
-          type: string
           updated_at?: string | null
         }
         Update: {
-          created_at?: string | null
-          expanded?: boolean | null
           id?: string
-          label?: string
-          position_x?: number
-          position_y?: number
-          status?: string | null
-          type?: string
+          title?: string | null
+          metadata?: Json | null
+          created_at?: string | null
           updated_at?: string | null
         }
         Relationships: []
       }
-      sub_objectives: {
+      chat_messages: {
         Row: {
-          created_at: string | null
           id: string
-          label: string
-          node_id: string
-          order_index: number
-          status: string | null
+          thread_id: string
+          parent_id: string | null
+          role: string
+          content: string | null
+          thinking: string | null
+          tool_calls: Json | null
+          created_at: string | null
           updated_at: string | null
         }
         Insert: {
-          created_at?: string | null
           id: string
-          label: string
-          node_id: string
-          order_index: number
-          status?: string | null
+          thread_id: string
+          parent_id?: string | null
+          role: string
+          content?: string | null
+          thinking?: string | null
+          tool_calls?: Json | null
+          created_at?: string | null
           updated_at?: string | null
         }
         Update: {
-          created_at?: string | null
           id?: string
-          label?: string
-          node_id?: string
-          order_index?: number
-          status?: string | null
+          thread_id?: string
+          parent_id?: string | null
+          role?: string
+          content?: string | null
+          thinking?: string | null
+          tool_calls?: Json | null
+          created_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "sub_objectives_node_id_fkey"
-            columns: ["node_id"]
+            foreignKeyName: "chat_messages_parent_id_fkey"
+            columns: ["parent_id"]
             isOneToOne: false
-            referencedRelation: "nodes"
+            referencedRelation: "chat_messages"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          }
         ]
+      }
+      chat_drafts: {
+        Row: {
+          thread_id: string
+          draft_text: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          thread_id: string
+          draft_text?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          thread_id?: string
+          draft_text?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_drafts_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: true
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      layout_borders: {
+        Row: {
+          border_id: string
+          axis: "x" | "y"
+          position: number
+          updated_at: string | null
+        }
+        Insert: {
+          border_id: string
+          axis: "x" | "y"
+          position: number
+          updated_at?: string | null
+        }
+        Update: {
+          border_id?: string
+          axis?: "x" | "y"
+          position?: number
+          updated_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {

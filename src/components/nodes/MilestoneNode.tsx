@@ -11,6 +11,7 @@ interface MilestoneNodeData {
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  highlighted?: boolean;
 }
 
 export default function MilestoneNode({ data }: { data: MilestoneNodeData }) {
@@ -49,7 +50,8 @@ export default function MilestoneNode({ data }: { data: MilestoneNodeData }) {
           <div className={cn(
             "rounded-lg p-4 border-2 border-node-milestone/20 shadow-lg min-w-[180px] hover:shadow-xl hover:scale-105 transition-all duration-500",
             (data.status === 'completed') ? "bg-green-500" : "bg-node-milestone",
-            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60"
+            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60",
+            data.highlighted && "ring-4 ring-primary/60 shadow-[0_0_0_6px_rgba(59,130,246,0.35)]"
           )}>
             <div className="flex items-center gap-3">
               <Flag className="w-5 h-5 text-white" />
