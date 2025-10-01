@@ -1,17 +1,23 @@
 import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
-import { Input } from '../ui/input';
+import {
+    getGeminiResponse,
+    getTitleSuggestion,
+    getToolIntent,
+    type ApiToolDefinition,
+    type ApiToolCall,
+} from '@/services/openRouter';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
+import { Textarea } from '../ui/textarea';
+import { Send, Square, PlusCircle, Cog } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
-import ModelSelectionDialog from './ModelSelectionDialog';
 import { useConversationContext } from '@/hooks/useConversationContext';
+import { cn } from '@/lib/utils';
 
 const ChatPane = () => {
     const {
@@ -32,13 +38,14 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-    const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
-    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
+    const [isSettingsDialogOpen, setSettingsDialogOpen] = useState(false);
+    const [isInputExpanded, setIsInputExpanded] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const formRef = useRef<HTMLFormElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
-    const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
+    const { selectedModel, recordModelUsage, getToolIntentCheck } = useModelSelection();
     const { applyContextToMessages, transforms } = useConversationContext();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
@@ -87,6 +94,21 @@ const ChatPane = () => {
         console.log('[ChatPane] Sending payload to API:', apiMessages);
         console.log('[ChatPane][MCP] Available tools:', availableTools);
 
+        let toolsForInitialCall: ApiToolDefinition[] | undefined =
+            toolDefinitions.length > 0 ? toolDefinitions : undefined;
+
+        if (toolsForInitialCall && getToolIntentCheck(selectedModel.id)) {
+            try {
+                const intent = await getToolIntent(content);
+                console.log('[ChatPane] Tool intent classification:', intent);
+                if (intent === 'CONVERSATION') {
+                    toolsForInitialCall = undefined;
+                }
+            } catch (intentError) {
+                console.warn('[ChatPane] Tool intent classification failed. Falling back to tool-enabled request.', intentError);
+            }
+        }
+
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
         clearDraft(threadId);
@@ -95,6 +117,15 @@ const ChatPane = () => {
         // Add a blank assistant message to begin streaming
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id, toolCalls: [] });
         setStreamingMessageId(assistantMessage.id);
+
+        let finalizeCalled = false;
+        const finalize = () => {
+            if (finalizeCalled) return;
+            finalizeCalled = true;
+            setIsLoading(false);
+            setStreamingMessageId(null);
+            abortControllerRef.current = null;
+        };
 
         try {
             const controller = new AbortController();
@@ -134,12 +165,16 @@ const ChatPane = () => {
                     }
                 },
                 signal: controller.signal,
-                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                tools: toolsForInitialCall,
                 model: selectedModel.id,
                 transforms: transforms.length > 0 ? transforms : undefined,
             });
 
             console.log('[ChatPane][Raw Gemini response]', raw);
+            if (!raw) {
+                finalize();
+                return;
+            }
             const toolCallRequests = raw?.choices?.[0]?.message?.tool_calls;
             if (toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
                 console.log('[ChatPane][MCP] Processing', toolCallRequests.length, 'tool calls');
@@ -294,31 +329,34 @@ const ChatPane = () => {
                 }
             }
 
-            // After the first response, fetch an automatic title suggestion
+            finalize();
+
+            // After the first response, fetch an automatic title suggestion asynchronously
             if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
-                try {
-                    const actingMessages = [
-                        ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-                        ...historyChain.map(({ role, content }) => ({ role, content })),
-                        { role: 'user' as const, content },
-                        { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
-                    ];
-                    const title = await getTitleSuggestion(actingMessages);
-                    if (title) {
-                        updateThreadTitle(activeThreadId!, title);
+                void (async () => {
+                    try {
+                        const actingMessages = [
+                            ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+                            ...historyChain.map(({ role, content }) => ({ role, content })),
+                            { role: 'user' as const, content },
+                            { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
+                        ];
+                        const title = await getTitleSuggestion(actingMessages);
+                        if (title) {
+                            updateThreadTitle(activeThreadId!, title);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch title suggestion:', err);
                     }
-                } catch (err) {
-                    console.warn('Failed to fetch title suggestion:', err);
-                }
+                })();
             }
 
         } catch (error) {
             const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
             updateMessage(assistantMessage.id, { content: errorMessage });
+            finalize();
         } finally {
-            setIsLoading(false);
-            setStreamingMessageId(null);
-            abortControllerRef.current = null;
+            finalize();
         }
     };
 
@@ -333,6 +371,7 @@ const ChatPane = () => {
 
         const userInput = input;
         setInput('');
+        setIsInputExpanded(false);
 
         const currentChain = getMessageChain(activeThread?.leafMessageId || null);
         const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
@@ -410,8 +449,16 @@ const ChatPane = () => {
     }
 
     return (
-        <div className="flex h-full flex-col bg-background">
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <div className="relative flex h-full flex-col bg-background">
+            <ScrollArea
+                className="flex-1 p-4"
+                ref={scrollAreaRef}
+                onMouseDown={() => {
+                    if (isInputExpanded) {
+                        setIsInputExpanded(false);
+                    }
+                }}
+            >
                 <div className="flex flex-col gap-4">
                     {messages.map((msg) => {
                         let branchInfo;
@@ -450,16 +497,32 @@ const ChatPane = () => {
                     })}
                 </div>
             </ScrollArea>
-            <div className="border-t p-4">
-                <form onSubmit={handleSubmit} className="flex items-center gap-2">
-                    <Input
+            <div
+                className={cn(
+                    'border-t bg-background p-4 transition-all duration-300 ease-in-out',
+                    isInputExpanded ? 'absolute bottom-0 left-0 right-0 z-20 h-1/2 shadow-2xl' : ''
+                )}
+                onFocusCapture={() => setIsInputExpanded(true)}
+                onBlurCapture={(event) => {
+                    const relatedTarget = event.relatedTarget as Node | null;
+                    if (!event.currentTarget.contains(relatedTarget)) {
+                        setIsInputExpanded(false);
+                    }
+                }}
+            >
+                <form
+                    ref={formRef}
+                    onSubmit={handleSubmit}
+                    className={cn('flex w-full gap-3', isInputExpanded ? 'h-full flex-col' : 'items-center')}
+                >
+                    <Textarea
                         value={input}
                         onChange={(e) => {
-                            const value = e.target.value;
                             let threadId = activeThreadId;
                             if (!threadId) {
                                 threadId = createThread();
                             }
+                            const value = e.target.value;
                             setInput(value);
                             if (threadId) {
                                 updateDraft(threadId, value);
@@ -467,57 +530,49 @@ const ChatPane = () => {
                         }}
                         placeholder="Ask anything..."
                         disabled={isLoading}
-                        className="flex-1"
+                        rows={isInputExpanded ? 8 : 1}
+                        className={cn(
+                            'min-h-[44px] w-full resize-none border bg-background text-sm shadow-sm',
+                            isInputExpanded ? 'flex-1 text-base' : ''
+                        )}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                const hasModifier = event.metaKey || event.ctrlKey;
+                                if (!isInputExpanded || hasModifier) {
+                                    event.preventDefault();
+                                    formRef.current?.requestSubmit();
+                                }
+                            }
+                        }}
                     />
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div
+                        className={cn(
+                            'flex items-center gap-2',
+                            isInputExpanded ? 'justify-end' : ''
+                        )}
+                    >
                         <Button
                             type="button"
                             variant="secondary"
-                            onClick={() => setModelDialogOpen(true)}
-                            className="h-10 w-10 p-0 bg-muted text-black hover:bg-muted/80"
-                            title={`Select model (current: ${selectedModel.label ?? selectedModel.id})`}
+                            onClick={() => setSettingsDialogOpen(true)}
+                            className="h-10 w-10 p-0"
+                            title="Open settings"
                         >
-                            <Sparkles className="h-4 w-4" />
+                            <Cog className="h-4 w-4" />
                         </Button>
-                        <div className="flex min-w-0 flex-col text-left leading-tight">
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Model</span>
-                            <span
-                                className="truncate text-xs text-foreground"
-                                title={selectedModel.label ?? selectedModel.id}
-                            >
-                                {selectedModel.label ?? selectedModel.id}
-                            </span>
-                        </div>
+                        {isLoading ? (
+                            <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
+                                <Square className="h-4 w-4" />
+                            </Button>
+                        ) : (
+                            <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
-                        className="h-10 w-10 p-0"
-                        title="Manage system instructions"
-                    >
-                        <Cog className="h-4 w-4" />
-                    </Button>
-                    {isLoading ? (
-                        <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
-                            <Square className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    )}
                 </form>
             </div>
-            <SettingsDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
-            <ModelSelectionDialog
-                open={isModelDialogOpen}
-                onOpenChange={setModelDialogOpen}
-                onSelectModel={(model) => {
-                    setSelectedModel(model);
-                    setModelDialogOpen(false);
-                }}
-            />
+            <SettingsDialog open={isSettingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
         </div>
     );
 };
