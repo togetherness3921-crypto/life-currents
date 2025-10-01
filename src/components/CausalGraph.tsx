@@ -27,6 +27,8 @@ import { useTodayTime } from '@/hooks/useTodayTime';
 import ProgressGraphPanel from './ProgressGraphPanel';
 import StatsPanel from './StatsPanel';
 import ChatLayout from './chat/ChatLayout';
+import { useToast } from '@/hooks/use-toast';
+import { fetchLayoutBorders, persistLayoutBorders } from '@/services/layoutPersistence';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -65,24 +67,98 @@ export default function CausalGraph() {
   const targetFitGraphIdRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
-  const { now, dayKey, startOfDay, endOfDay } = useTodayTime(60000);
+  const { now, startOfDay, endOfDay } = useTodayTime(60000);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+  const { toast } = useToast();
 
-  // Persist panel sizes in localStorage
-  const PANEL_SIZES_KEY = 'panel_sizes_v1';
-  const [panelSizes, setPanelSizes] = useState<number[]>(() => {
-    try {
-      const raw = localStorage.getItem(PANEL_SIZES_KEY);
-      if (!raw) return [70, 15, 15];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === 3) return parsed;
-      return [70, 15, 15];
-    } catch {
-      return [70, 15, 15];
+  const DEFAULT_TOP_LAYOUT = [70, 15, 15] as const;
+  const DEFAULT_MAIN_VERTICAL_LAYOUT = [65, 15, 20] as const;
+  const DEFAULT_PROGRESS_LAYOUT = [75, 25] as const;
+
+  const [topLayout, setTopLayout] = useState<number[] | null>(null);
+  const [mainVerticalLayoutState, setMainVerticalLayoutState] = useState<number[] | null>(null);
+  const [progressLayoutState, setProgressLayoutState] = useState<number[] | null>(null);
+  const [layoutLoaded, setLayoutLoaded] = useState(false);
+
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+  const MIN_PANEL = 5;
+
+  const computeThreePanelLayout = (
+    defaults: readonly number[],
+    first?: number,
+    second?: number
+  ): number[] => {
+    if (typeof first !== 'number' || typeof second !== 'number') {
+      return [...defaults];
     }
-  });
-  const onLayout = useCallback((sizes: number[]) => {
-    setPanelSizes(sizes);
-    try { localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes)); } catch { }
+    const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL * 2);
+    const secondClamped = clamp(second, firstClamped + MIN_PANEL, 100 - MIN_PANEL);
+    const layout = [
+      firstClamped,
+      Math.max(MIN_PANEL, secondClamped - firstClamped),
+      Math.max(MIN_PANEL, 100 - secondClamped),
+    ];
+    const total = layout.reduce((sum, value) => sum + value, 0);
+    return layout.map((value) => (value / total) * 100);
+  };
+
+  const computeTwoPanelLayout = (defaults: readonly number[], first?: number): number[] => {
+    if (typeof first !== 'number') {
+      return [...defaults];
+    }
+    const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL);
+    return [firstClamped, 100 - firstClamped];
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadLayouts = async () => {
+      const borders = await fetchLayoutBorders();
+      const top = computeThreePanelLayout(
+        DEFAULT_TOP_LAYOUT,
+        borders['top-horizontal-1']?.position,
+        borders['top-horizontal-2']?.position
+      );
+      const vertical = computeThreePanelLayout(
+        DEFAULT_MAIN_VERTICAL_LAYOUT,
+        borders['main-vertical-1']?.position,
+        borders['main-vertical-2']?.position
+      );
+      const progress = computeTwoPanelLayout(
+        DEFAULT_PROGRESS_LAYOUT,
+        borders['progress-horizontal-1']?.position
+      );
+      const missingBorders: Array<{ borderId: string; axis: 'x' | 'y'; position: number }> = [];
+      if (!borders['top-horizontal-1']) {
+        missingBorders.push({ borderId: 'top-horizontal-1', axis: 'x' as const, position: top[0] });
+      }
+      if (!borders['top-horizontal-2']) {
+        missingBorders.push({ borderId: 'top-horizontal-2', axis: 'x' as const, position: top[0] + top[1] });
+      }
+      if (!borders['main-vertical-1']) {
+        missingBorders.push({ borderId: 'main-vertical-1', axis: 'y' as const, position: vertical[0] });
+      }
+      if (!borders['main-vertical-2']) {
+        missingBorders.push({ borderId: 'main-vertical-2', axis: 'y' as const, position: vertical[0] + vertical[1] });
+      }
+      if (!borders['progress-horizontal-1']) {
+        missingBorders.push({ borderId: 'progress-horizontal-1', axis: 'x' as const, position: progress[0] });
+      }
+      if (missingBorders.length > 0) {
+        void persistLayoutBorders(missingBorders);
+      }
+      if (isMounted) {
+        setTopLayout(top);
+        setMainVerticalLayoutState(vertical);
+        setProgressLayoutState(progress);
+        setLayoutLoaded(true);
+      }
+    };
+    void loadLayouts();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const logViewport = useCallback((label: string) => {
@@ -149,7 +225,57 @@ export default function CausalGraph() {
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
 
+  useEffect(() => () => {
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTopLayoutChange = useCallback(
+    (sizes: number[]) => {
+      setTopLayout(sizes);
+      void persistLayoutBorders([
+        { borderId: 'top-horizontal-1', axis: 'x' as const, position: sizes[0] },
+        { borderId: 'top-horizontal-2', axis: 'x' as const, position: sizes[0] + sizes[1] },
+      ]);
+    },
+    []
+  );
+
+  const handleMainVerticalLayoutChange = useCallback(
+    (sizes: number[]) => {
+      setMainVerticalLayoutState(sizes);
+      void persistLayoutBorders([
+        { borderId: 'main-vertical-1', axis: 'y' as const, position: sizes[0] },
+        { borderId: 'main-vertical-2', axis: 'y' as const, position: sizes[0] + sizes[1] },
+      ]);
+    },
+    []
+  );
+
+  const handleProgressLayoutChange = useCallback(
+    (sizes: number[]) => {
+      setProgressLayoutState(sizes);
+      void persistLayoutBorders([
+        { borderId: 'progress-horizontal-1', axis: 'x' as const, position: sizes[0] },
+      ]);
+    },
+    []
+  );
+
   const containerIds = useMemo(() => new Set<string>(Object.values(nodeToGraphMap || {})), [nodeToGraphMap]);
+
+  const triggerHighlight = useCallback((nodeId: string) => {
+    setHighlightedNodeId(nodeId);
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedNodeId((current) => (current === nodeId ? null : current));
+      highlightTimerRef.current = null;
+    }, 1800);
+  }, []);
 
   const onNodeClick = useCallback((_: any, node: any) => {
     const isContainer = containerIds.has(node.id);
@@ -263,6 +389,7 @@ export default function CausalGraph() {
   // Compute sub-objectives (children whose graph equals this node.id) and pass into ObjectiveNode as props
   const allDocNodes = (docData?.nodes || {}) as Record<string, any>;
   const nodesWithActions = nodes.map((node) => {
+    const isHighlighted = node.id === highlightedNodeId;
     let subObjectives: Array<{ id: string; label: string; status?: string }> | undefined = undefined;
     const subs = Object.entries(allDocNodes)
       .filter(([id]) => (nodeToGraphMap || {})[id] === node.id)
@@ -272,6 +399,7 @@ export default function CausalGraph() {
       ...node,
       data: {
         ...node.data,
+        isHighlighted,
         subObjectives,
         onDelete: () => deleteNode(node.id),
         onComplete: () => onNodeComplete(node.id),
@@ -283,15 +411,24 @@ export default function CausalGraph() {
   // Task panel actions
   const nodesById = useMemo(() => (docData?.nodes || {}) as Record<string, any>, [docData?.nodes]);
   const onToggleComplete = useCallback((id: string) => setNodeStatus(id, 'completed'), [setNodeStatus]);
-  const onZoomToNode = useCallback((id: string) => {
-    if (!reactFlowInstance.current) return;
-    const node = reactFlowInstance.current.getNode(id);
-    if (node) {
-      reactFlowInstance.current.fitView({ nodes: [node], duration: 800, padding: 0.3 });
-    }
-  }, []);
+  const onZoomToNode = useCallback(
+    (id: string) => {
+      if (!reactFlowInstance.current) return;
+      const node = reactFlowInstance.current.getNode(id);
+      if (node) {
+        reactFlowInstance.current.fitView({ nodes: [node], duration: 800, padding: 0.3 });
+        triggerHighlight(id);
+      } else {
+        toast({
+          title: 'Node not found',
+          description: 'The selected item is not available in the current graph view.',
+        });
+      }
+    },
+    [toast, triggerHighlight]
+  );
 
-  if (loading) {
+  if (loading || !layoutLoaded) {
     return (
       <div className="w-full h-[100dvh] bg-graph-background flex items-center justify-center">
         <div className="flex items-center gap-2 text-foreground">
@@ -302,18 +439,21 @@ export default function CausalGraph() {
     );
   }
 
-  return (
-    <div className="w-full h-[100dvh] bg-graph-background">
-      {/* Manual commit timestamp badge (manually updated by AI per commit) */}
-      <div className="absolute top-2 left-2 z-[9999] text-[10px] leading-none px-2 py-1 rounded bg-black/60 text-white border border-white/10">
-        Commit: 2025-09-17T02:45:00Z
-      </div>
+  const resolvedTopLayout = topLayout ?? [...DEFAULT_TOP_LAYOUT];
+  const resolvedMainVerticalLayout = mainVerticalLayoutState ?? [...DEFAULT_MAIN_VERTICAL_LAYOUT];
+  const resolvedProgressLayout = progressLayoutState ?? [...DEFAULT_PROGRESS_LAYOUT];
 
-      <ResizablePanelGroup direction="vertical" className="h-full w-full">
-        <ResizablePanel defaultSize={65}>
-          <ResizablePanelGroup direction="horizontal" onLayout={onLayout} className="h-full">
+  return (
+      <div className="w-full h-[100dvh] bg-graph-background">
+        <ResizablePanelGroup
+          direction="vertical"
+          className="h-full w-full"
+          onLayout={handleMainVerticalLayoutChange}
+        >
+          <ResizablePanel defaultSize={resolvedMainVerticalLayout[0]}>
+          <ResizablePanelGroup direction="horizontal" onLayout={handleTopLayoutChange} className="h-full">
             {/* Left: Main graph */}
-            <ResizablePanel defaultSize={panelSizes[0]} minSize={40} className="relative">
+            <ResizablePanel defaultSize={resolvedTopLayout[0]} minSize={40} className="relative">
               <ReactFlow
                 nodes={nodesWithActions}
                 edges={edges}
@@ -343,7 +483,7 @@ export default function CausalGraph() {
                 }}
               >
                 <Controls
-                  className="bg-card border-border text-foreground p-1 [&>button]:w-6 [&>button]:h-6"
+                  className="bg-card border-border text-foreground p-1 [&>button]:w-10 [&>button]:h-10 [&>button]:rounded-md scale-50 origin-bottom-left !left-2 !bottom-2 shadow-sm"
                   showZoom={false}
                   showFitView={true}
                   showInteractive={false}
@@ -394,7 +534,7 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Middle: Daily task checklist */}
-            <ResizablePanel defaultSize={panelSizes[1]} minSize={10} className="relative">
+            <ResizablePanel defaultSize={resolvedTopLayout[1]} minSize={10} className="relative">
               <DailyTaskPanel
                 nodesById={nodesById}
                 onToggleComplete={onToggleComplete}
@@ -406,25 +546,31 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Right: Daily calendar view */}
-            <ResizablePanel defaultSize={panelSizes[2]} minSize={10} className="relative">
-              <DailyCalendarPanel nodesById={nodesById} startOfDay={startOfDay} endOfDay={endOfDay} now={now} />
+            <ResizablePanel defaultSize={resolvedTopLayout[2]} minSize={10} className="relative">
+              <DailyCalendarPanel
+                nodesById={nodesById}
+                startOfDay={startOfDay}
+                endOfDay={endOfDay}
+                now={now}
+                onZoomToNode={onZoomToNode}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={15} minSize={10}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={75} minSize={30}>
+        <ResizablePanel defaultSize={resolvedMainVerticalLayout[1]} minSize={10}>
+          <ResizablePanelGroup direction="horizontal" className="h-full" onLayout={handleProgressLayoutChange}>
+            <ResizablePanel defaultSize={resolvedProgressLayout[0]} minSize={30}>
               <ProgressGraphPanel history={docData?.historical_progress} />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={25} minSize={20}>
+            <ResizablePanel defaultSize={resolvedProgressLayout[1]} minSize={20}>
               <StatsPanel history={docData?.historical_progress} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={20} minSize={10}>
+        <ResizablePanel defaultSize={resolvedMainVerticalLayout[2]} minSize={10}>
           <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>
