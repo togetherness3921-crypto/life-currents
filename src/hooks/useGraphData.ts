@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Node, Edge } from '@xyflow/react';
 import { computePositions } from '@/services/layoutEngine';
@@ -26,6 +26,145 @@ interface GraphEdge {
   animated: boolean;
   style: any;
 }
+
+type LayoutAxis = 'x' | 'y';
+
+interface LayoutBorderRow {
+  border_id: string;
+  axis: LayoutAxis;
+  position: number;
+}
+
+const DEFAULT_LAYOUT_CONFIG = {
+  mainColumns: [70, 15, 15] as [number, number, number],
+  verticalSections: [65, 15, 20] as [number, number, number],
+  progressColumns: [75, 25] as [number, number],
+};
+
+type LayoutConfig = typeof DEFAULT_LAYOUT_CONFIG;
+type LayoutKey = keyof LayoutConfig;
+
+const LAYOUT_BORDER_CONFIG: Record<LayoutKey, Array<{ id: string; axis: LayoutAxis }>> = {
+  mainColumns: [
+    { id: 'main_columns_first', axis: 'x' },
+    { id: 'main_columns_second', axis: 'x' },
+  ],
+  verticalSections: [
+    { id: 'vertical_sections_first', axis: 'y' },
+    { id: 'vertical_sections_second', axis: 'y' },
+  ],
+  progressColumns: [
+    { id: 'progress_columns_divider', axis: 'x' },
+  ],
+};
+
+const computeBorderPositions = (sizes: number[]): number[] => {
+  if (!Array.isArray(sizes) || sizes.length < 2) return [];
+  const numeric = sizes.map((value) => Number(value));
+  if (numeric.some((value) => Number.isNaN(value))) return [];
+  const total = numeric.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return [];
+  let accumulated = 0;
+  const positions: number[] = [];
+  for (let index = 0; index < numeric.length - 1; index += 1) {
+    accumulated += numeric[index];
+    positions.push((accumulated / total) * 100);
+  }
+  return positions;
+};
+
+const buildLayoutFromBorders = (positions: number[], segmentCount: number, fallback: number[]): number[] => {
+  if (positions.length !== segmentCount - 1) {
+    return [...fallback];
+  }
+
+  const sorted = [...positions]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  if (sorted.length !== positions.length) {
+    return [...fallback];
+  }
+
+  const layout: number[] = [];
+  let previous = 0;
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const current = sorted[index];
+    if (current <= 0 || current >= 100) {
+      return [...fallback];
+    }
+    if (index > 0 && current <= sorted[index - 1]) {
+      return [...fallback];
+    }
+    const segment = current - previous;
+    if (segment <= 0) {
+      return [...fallback];
+    }
+    layout.push(segment);
+    previous = current;
+  }
+
+  const lastSegment = 100 - previous;
+  if (lastSegment <= 0) {
+    return [...fallback];
+  }
+  layout.push(lastSegment);
+
+  return layout;
+};
+
+const buildLayoutConfigFromRows = (rows: LayoutBorderRow[]): LayoutConfig => {
+  const rowMap = new Map<string, LayoutBorderRow>();
+  rows.forEach((row) => {
+    if (!row?.border_id) return;
+    rowMap.set(row.border_id, row);
+  });
+
+  const getPositions = (key: LayoutKey) =>
+    LAYOUT_BORDER_CONFIG[key]
+      .map(({ id, axis }) => {
+        const record = rowMap.get(id);
+        if (!record || record.axis !== axis) return null;
+        const value = Number(record.position);
+        return Number.isFinite(value) ? value : null;
+      })
+      .filter((value): value is number => value !== null);
+
+  const mainLayout = buildLayoutFromBorders(
+    getPositions('mainColumns'),
+    DEFAULT_LAYOUT_CONFIG.mainColumns.length,
+    DEFAULT_LAYOUT_CONFIG.mainColumns
+  ) as [number, number, number];
+
+  const verticalLayout = buildLayoutFromBorders(
+    getPositions('verticalSections'),
+    DEFAULT_LAYOUT_CONFIG.verticalSections.length,
+    DEFAULT_LAYOUT_CONFIG.verticalSections
+  ) as [number, number, number];
+
+  const progressLayout = buildLayoutFromBorders(
+    getPositions('progressColumns'),
+    DEFAULT_LAYOUT_CONFIG.progressColumns.length,
+    DEFAULT_LAYOUT_CONFIG.progressColumns
+  ) as [number, number];
+
+  return {
+    mainColumns: mainLayout,
+    verticalSections: verticalLayout,
+    progressColumns: progressLayout,
+  };
+};
+
+const buildBorderUpserts = (layoutKey: LayoutKey, layout: number[]) => {
+  const positions = computeBorderPositions(layout);
+  return LAYOUT_BORDER_CONFIG[layoutKey].map((definition, index) => ({
+    border_id: definition.id,
+    axis: definition.axis,
+    position: positions[index],
+  }));
+};
 
 const buildHierarchyMap = (nodesData: any, completedNodeIds: Set<string> = new Set()) => {
   const logPrefix = '[LayoutEngine/buildHierarchyMap]';
@@ -97,6 +236,7 @@ export function useGraphData() {
   const [positions, setPositions] = useState<Record<string, { x: number, y: number }>>({});
   const [hiddenNodeIds, setHiddenNodeIds] = useState<Set<string>>(new Set());
   const [nodeToGraphMap, setNodeToGraphMap] = useState<Record<string, string>>({});
+  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(DEFAULT_LAYOUT_CONFIG);
 
   const { nodes, edges } = useMemo(() => {
     if (!docData?.nodes) return { nodes: [], edges: [] };
@@ -141,6 +281,7 @@ export function useGraphData() {
   const [isFirstLayoutDone, setIsFirstLayoutDone] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const localOperationsRef = useRef(new Set<string>());
+  const layoutOperationsRef = useRef(new Set<string>());
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const layoutRecalcTimerRef = useRef<any>(null);
   const didPostMeasureLayoutRef = useRef<boolean>(false);
@@ -173,6 +314,19 @@ export function useGraphData() {
       setLoading(false);
     }
   };
+
+  const loadLayoutConfig = useCallback(async () => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('layout_borders')
+        .select('border_id, axis, position');
+      if (error) throw error;
+      const config = buildLayoutConfigFromRows((data ?? []) as LayoutBorderRow[]);
+      setLayoutConfig(config);
+    } catch (error) {
+      console.error('Failed to load layout borders:', error);
+    }
+  }, []);
   const getActiveNodesData = (dataOverride?: any) => {
     const data = dataOverride ?? docData;
     const allNodes = data?.nodes || {};
@@ -430,6 +584,53 @@ export function useGraphData() {
     return;
   };
 
+  const updatePanelLayout = useCallback(async (key: string, sizes: number[]) => {
+    const layoutKey = key as LayoutKey;
+    if (!(layoutKey in DEFAULT_LAYOUT_CONFIG)) {
+      console.warn(`[Layout] Ignoring update for unknown key '${key}'`);
+      return;
+    }
+
+    const expectedLength = DEFAULT_LAYOUT_CONFIG[layoutKey].length;
+    const numericSizes = Array.isArray(sizes) ? sizes.map((value) => Number(value)) : [];
+    if (numericSizes.length !== expectedLength || numericSizes.some((value) => Number.isNaN(value))) {
+      console.warn(`[Layout] Received invalid sizes for '${layoutKey}'`, sizes);
+      return;
+    }
+
+    const normalizedLayout = buildLayoutFromBorders(
+      computeBorderPositions(numericSizes),
+      expectedLength,
+      numericSizes
+    );
+
+    setLayoutConfig((prev) => ({
+      ...prev,
+      [layoutKey]: normalizedLayout,
+    } as LayoutConfig));
+
+    const upserts = buildBorderUpserts(layoutKey, normalizedLayout).filter(
+      (entry) => typeof entry.position === 'number' && !Number.isNaN(entry.position)
+    );
+
+    if (upserts.length === 0) {
+      return;
+    }
+
+    upserts.forEach((entry) => layoutOperationsRef.current.add(entry.border_id));
+
+    try {
+      const { error } = await (supabase as any)
+        .from('layout_borders')
+        .upsert(upserts);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating layout borders:', error);
+    } finally {
+      upserts.forEach((entry) => layoutOperationsRef.current.delete(entry.border_id));
+    }
+  }, []);
+
   const updateViewportState = async (x: number, y: number, zoom: number) => {
     try {
       const newViewportState = { x, y, zoom };
@@ -470,6 +671,30 @@ export function useGraphData() {
     const nodeType = (docData?.nodes?.[nodeId]?.type) || 'objectiveNode';
     return getNodeBoxHeight(nodeType);
   };
+
+  useEffect(() => {
+    loadLayoutConfig();
+
+    const channel = (supabase as any)
+      .channel('layout_borders_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'layout_borders' },
+        (payload: any) => {
+          const borderId = payload?.new?.border_id ?? payload?.old?.border_id;
+          if (borderId && layoutOperationsRef.current.has(borderId)) {
+            layoutOperationsRef.current.delete(borderId);
+            return;
+          }
+          loadLayoutConfig();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try { (supabase as any).removeChannel(channel); } catch { }
+    };
+  }, [loadLayoutConfig]);
 
   // Keep a ref to measuredNodes for timers/RAF checks
   useEffect(() => {
@@ -794,6 +1019,7 @@ export function useGraphData() {
     activeGraphId,
     viewportState,
     docData,
+    layoutConfig,
     layoutReady,
     measuredNodes,
     nodeToGraphMap,
@@ -804,6 +1030,7 @@ export function useGraphData() {
     updateActiveNode,
     setActiveGraphId,
     updateViewportState,
+    updatePanelLayout,
     deleteNode,
     addRelationship,
     calculateAutoLayout,

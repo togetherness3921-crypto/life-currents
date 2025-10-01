@@ -6,6 +6,7 @@ type CalendarPanelProps = {
     startOfDay: Date;
     endOfDay: Date;
     now: Date;
+    onZoomToNode: (id: string) => void;
 };
 
 function isWithinDay(iso?: string, start?: Date, end?: Date) {
@@ -18,8 +19,10 @@ function minutesSinceStartOfDay(d: Date, startOfDay: Date) {
     return Math.max(0, Math.floor((d.getTime() - startOfDay.getTime()) / 60000));
 }
 
-export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now }: CalendarPanelProps) {
+export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now, onZoomToNode }: CalendarPanelProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const hasCenteredRef = useRef(false);
+    const userInteractedRef = useRef(false);
 
     const items = useMemo(() => {
         const result: Array<{ id: string; label: string; start: Date; end: Date }> = [];
@@ -40,14 +43,37 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
     const heightPx = totalMinutes * pxPerMinute;
     const nowOffset = minutesSinceStartOfDay(now, startOfDay) * pxPerMinute;
 
-    // Auto-scroll to keep current time in view
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        const padding = 120;
-        if (nowOffset < el.scrollTop + padding || nowOffset > el.scrollTop + el.clientHeight - padding) {
-            el.scrollTo({ top: Math.max(0, nowOffset - el.clientHeight / 2), behavior: 'smooth' });
-        }
+
+        const markInteraction = () => {
+            userInteractedRef.current = true;
+        };
+
+        el.addEventListener('wheel', markInteraction, { passive: true });
+        el.addEventListener('touchstart', markInteraction, { passive: true });
+        el.addEventListener('pointerdown', markInteraction, { passive: true });
+
+        return () => {
+            el.removeEventListener('wheel', markInteraction);
+            el.removeEventListener('touchstart', markInteraction);
+            el.removeEventListener('pointerdown', markInteraction);
+        };
+    }, []);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || userInteractedRef.current) return;
+
+        const timeout = window.setTimeout(() => {
+            if (!el || userInteractedRef.current) return;
+            const target = Math.max(0, nowOffset - el.clientHeight / 2);
+            el.scrollTo({ top: target, behavior: 'smooth' });
+            hasCenteredRef.current = true;
+        }, hasCenteredRef.current ? 0 : 200);
+
+        return () => window.clearTimeout(timeout);
     }, [nowOffset]);
 
     const hourLabel = (i: number) => {
@@ -86,10 +112,19 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
                             ? 'bg-green-500/40 border-green-500/60'
                             : 'bg-primary/20 border-primary/40';
                         return (
-                            <div key={it.id} className={cn('absolute left-0 right-0 rounded-sm border p-1 text-[10px]', bubbleClass)}
-                                style={{ top, height }}>
+                            <button
+                                key={it.id}
+                                type="button"
+                                className={cn(
+                                    'absolute left-0 right-0 rounded-sm border p-1 text-[10px] text-left transition-colors focus:outline-none focus:ring-1 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background',
+                                    bubbleClass
+                                )}
+                                style={{ top, height }}
+                                onClick={() => onZoomToNode(it.id)}
+                                aria-label={`Focus ${it.label} in the objective graph`}
+                            >
                                 <div className="font-medium text-foreground truncate">{it.label}</div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

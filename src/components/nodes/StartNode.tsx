@@ -5,12 +5,13 @@ import { cn } from '@/lib/utils';
 import { useEffect, useRef } from 'react';
 
 interface StartNodeData {
-  label: string; 
+  label: string;
   isActive?: boolean;
   status?: string;
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  highlighted?: boolean;
 }
 
 export default function StartNode({ data }: { data: StartNodeData }) {
@@ -39,6 +40,12 @@ export default function StartNode({ data }: { data: StartNodeData }) {
     <ContextMenu>
       <ContextMenuTrigger>
         <div ref={nodeRef} className="relative">
+          {data.highlighted && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-[-10px] rounded-full border-4 border-primary/60 opacity-80 shadow-[0_0_25px_rgba(59,130,246,0.35)] animate-pulse"
+            />
+          )}
 
           <div className={cn(
             "rounded-full w-32 h-32 flex items-center justify-center border-4 border-node-start/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-500",

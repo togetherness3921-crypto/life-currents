@@ -11,6 +11,7 @@ interface MilestoneNodeData {
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  highlighted?: boolean;
 }
 
 export default function MilestoneNode({ data }: { data: MilestoneNodeData }) {
@@ -39,6 +40,12 @@ export default function MilestoneNode({ data }: { data: MilestoneNodeData }) {
     <ContextMenu>
       <ContextMenuTrigger>
         <div ref={nodeRef} className="relative">
+          {data.highlighted && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-[-10px] rounded-2xl border-4 border-primary/60 opacity-80 shadow-[0_0_25px_rgba(59,130,246,0.35)] animate-pulse"
+            />
+          )}
 
           <Handle
             type="target"
