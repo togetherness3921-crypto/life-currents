@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import {
     Dialog,
@@ -18,6 +18,9 @@ import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { useConversationContext } from '@/hooks/useConversationContext';
 import type { ConversationContextMode } from '@/hooks/conversationContextProviderContext';
+import useModelSelection from '@/hooks/useModelSelection';
+import { getAvailableModels, type ModelInfo } from '@/services/openRouter';
+import { Toggle } from '@/components/ui/toggle';
 
 interface SettingsDialogProps {
     open: boolean;
@@ -46,13 +49,67 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         customMessageCount,
         setCustomMessageCount,
     } = useConversationContext();
+    const {
+        selectedModel,
+        setSelectedModel,
+        getUsageScore,
+        getToolIntentPreference,
+        setToolIntentPreference,
+    } = useModelSelection();
 
     const [selectedInstructionId, setSelectedInstructionId] = useState<string | null>(null);
     const [localTitle, setLocalTitle] = useState('');
     const [localContent, setLocalContent] = useState('');
     const [isEditingExisting, setIsEditingExisting] = useState(false);
     const [isCreatingNew, setIsCreatingNew] = useState(false);
-    const [activeTab, setActiveTab] = useState<'system' | 'context'>('system');
+    const [activeTab, setActiveTab] = useState<'system' | 'context' | 'model'>('system');
+    const [models, setModels] = useState<ModelInfo[]>([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
+    const [modelsError, setModelsError] = useState<string | null>(null);
+    const [modelSearchTerm, setModelSearchTerm] = useState('');
+    const [modelsFetched, setModelsFetched] = useState(false);
+
+    useEffect(() => {
+        if (!open || activeTab !== 'model' || modelsFetched) {
+            return;
+        }
+
+        let isMounted = true;
+        setModelsFetched(true);
+        setModelsLoading(true);
+        setModelsError(null);
+
+        getAvailableModels()
+            .then((fetchedModels) => {
+                if (!isMounted) return;
+                const merged = [...fetchedModels];
+                if (!merged.some((model) => model.id === selectedModel.id)) {
+                    merged.unshift({ id: selectedModel.id, name: selectedModel.label ?? selectedModel.id });
+                }
+                setModels(merged);
+            })
+            .catch((error) => {
+                if (!isMounted) return;
+                setModelsError(error instanceof Error ? error.message : 'Failed to load models');
+            })
+            .finally(() => {
+                if (!isMounted) return;
+                setModelsLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [open, activeTab, modelsFetched, selectedModel]);
+
+    useEffect(() => {
+        setModels((previous) => {
+            if (previous.some((model) => model.id === selectedModel.id)) {
+                return previous;
+            }
+            return [{ id: selectedModel.id, name: selectedModel.label ?? selectedModel.id }, ...previous];
+        });
+    }, [selectedModel]);
 
     const selectedInstruction = useMemo(() => {
         if (isCreatingNew) {
@@ -70,6 +127,30 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         ? localContent
         : selectedInstruction?.content ?? activeInstruction?.content ?? '';
 
+    const filteredModels = useMemo(() => {
+        const normalizedSearch = modelSearchTerm.trim().toLowerCase();
+        const entries = models.map((model) => ({
+            model,
+            score: getUsageScore(model.id),
+        }));
+
+        const sorted = [...entries].sort(
+            (a, b) => b.score - a.score || a.model.name.localeCompare(b.model.name)
+        );
+
+        if (!normalizedSearch) {
+            return sorted.map((entry) => entry.model);
+        }
+
+        return sorted
+            .filter(
+                ({ model }) =>
+                    model.name.toLowerCase().includes(normalizedSearch) ||
+                    model.id.toLowerCase().includes(normalizedSearch)
+            )
+            .map((entry) => entry.model);
+    }, [getUsageScore, modelSearchTerm, models]);
+
     const resetForm = () => {
         setSelectedInstructionId(null);
         setLocalTitle('');
@@ -77,6 +158,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         setIsEditingExisting(false);
         setIsCreatingNew(false);
         setActiveTab('system');
+        setModelSearchTerm('');
+        setModelsFetched(false);
+        setModelsError(null);
     };
 
     const handleSelectInstruction = (id: string) => {
@@ -162,14 +246,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                 <DialogHeader>
                     <DialogTitle>Settings</DialogTitle>
                     <DialogDescription>
-                        Configure the assistant&apos;s system prompt and control how much of the conversation history is sent with each
-                        request.
+                        Configure the assistant&apos;s system prompt, conversation context, and model preferences.
                     </DialogDescription>
                 </DialogHeader>
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'system' | 'context')}>
-                    <TabsList className="grid w-full grid-cols-2">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'system' | 'context' | 'model')}>
+                    <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="system">System Instructions</TabsTrigger>
                         <TabsTrigger value="context">Context</TabsTrigger>
+                        <TabsTrigger value="model">Model</TabsTrigger>
                     </TabsList>
                     <TabsContent value="system" className="mt-6">
                         <div className="grid gap-6 md:grid-cols-[220px_1fr]">
@@ -249,9 +333,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                     <Textarea
                                         value={displayContent}
                                         onChange={(event) => setLocalContent(event.target.value)}
-                                        rows={20}
+                                        rows={10}
                                         disabled={!isEditingExisting}
-                                        className="font-mono text-sm"
+                                        className="font-mono text-sm resize-none overflow-y-auto"
                                     />
                                 </div>
                             </div>
@@ -336,6 +420,94 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                     )}
                                 </div>
                             </RadioGroup>
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="model" className="mt-6">
+                        <div className="space-y-6">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                                <div>
+                                    <p className="text-sm font-medium">Model Selection</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Choose the default model and control whether tool intent checks run before each request.
+                                    </p>
+                                </div>
+                                <div className="md:w-72">
+                                    <Input
+                                        placeholder="Search models..."
+                                        value={modelSearchTerm}
+                                        onChange={(event) => setModelSearchTerm(event.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="h-80">
+                                {modelsLoading ? (
+                                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                                        Loading models...
+                                    </div>
+                                ) : modelsError ? (
+                                    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                                        <p className="text-sm text-destructive">{modelsError}</p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setModelsError(null);
+                                                setModelsFetched(false);
+                                            }}
+                                        >
+                                            Retry
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <ScrollArea className="h-full pr-2">
+                                        <div className="flex flex-col gap-3">
+                                            {filteredModels.map((model) => {
+                                                const intentEnabled = getToolIntentPreference(model.id);
+                                                return (
+                                                    <div
+                                                        key={model.id}
+                                                        className={cn(
+                                                            'flex items-center justify-between gap-4 rounded-md border p-3 transition-colors',
+                                                            model.id === selectedModel.id
+                                                                ? 'border-primary bg-primary/5'
+                                                                : 'border-border hover:border-primary/50'
+                                                        )}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedModel({ id: model.id, label: model.name })}
+                                                            className="flex-1 text-left"
+                                                        >
+                                                            <p className="text-sm font-medium">{model.name}</p>
+                                                            <p className="text-xs text-muted-foreground">{model.id}</p>
+                                                        </button>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-medium text-muted-foreground">
+                                                                Tool Intent Check
+                                                            </span>
+                                                            <Toggle
+                                                                pressed={intentEnabled}
+                                                                onPressedChange={(pressed) =>
+                                                                    setToolIntentPreference(model.id, Boolean(pressed))
+                                                                }
+                                                                aria-label={`Toggle tool intent check for ${model.name}`}
+                                                                className="h-9 w-20 text-xs"
+                                                            >
+                                                                {intentEnabled ? 'On' : 'Off'}
+                                                            </Toggle>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {filteredModels.length === 0 && (
+                                                <div className="py-8 text-center text-sm text-muted-foreground">
+                                                    No models matched your search.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                )}
+                            </div>
                         </div>
                     </TabsContent>
                 </Tabs>

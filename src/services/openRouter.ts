@@ -82,6 +82,63 @@ export const getAvailableModels = async (): Promise<ModelInfo[]> => {
     })).filter((model) => typeof model.id === 'string' && model.id.length > 0);
 };
 
+export const getToolIntent = async (userQuery: string): Promise<'TOOL' | 'CONVERSATION'> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const payload = {
+        model: 'google/gemini-2.5-pro-flash',
+        messages: [
+            {
+                role: 'system',
+                content:
+                    'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.',
+            },
+            { role: 'user', content: userQuery },
+        ],
+        stream: false,
+    };
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Intent classification failed: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const message = data?.choices?.[0]?.message;
+    const rawContent = message?.content;
+
+    let textContent = '';
+    if (typeof rawContent === 'string') {
+        textContent = rawContent;
+    } else if (Array.isArray(rawContent)) {
+        textContent = rawContent
+            .map((part: unknown) => {
+                if (part && typeof part === 'object') {
+                    const maybeText = (part as { text?: string; content?: string }).text ?? (part as { content?: string }).content;
+                    return maybeText ?? '';
+                }
+                return typeof part === 'string' ? part : '';
+            })
+            .join(' ');
+    } else if (rawContent && typeof rawContent === 'object' && 'text' in rawContent) {
+        textContent = (rawContent as { text?: string }).text ?? '';
+    }
+
+    const normalized = textContent.trim().split(/\s+/)[0]?.toUpperCase();
+    return normalized === 'TOOL' ? 'TOOL' : 'CONVERSATION';
+};
+
 export const getGeminiResponse = async (
     messages: ApiMessage[],
     {
