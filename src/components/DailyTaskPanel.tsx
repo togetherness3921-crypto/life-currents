@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 type TaskPanelProps = {
     nodesById: Record<string, any>;
     onToggleComplete: (id: string) => void;
-    onZoomToNode: (id: string) => void;
+    onSelectNode: (id: string) => void;
     startOfDay: Date;
     endOfDay: Date;
 };
@@ -16,7 +16,7 @@ function isWithinDay(iso?: string, start?: Date, end?: Date) {
     return t >= start.getTime() && t <= end.getTime();
 }
 
-export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNode, startOfDay, endOfDay }: TaskPanelProps) {
+export default function DailyTaskPanel({ nodesById, onToggleComplete, onSelectNode, startOfDay, endOfDay }: TaskPanelProps) {
     const { inProgressToday, completedToday } = useMemo(() => {
         const all = Object.entries(nodesById || {});
         const inProg = all.filter(([, n]) => (n as any)?.status === 'in-progress');
@@ -41,7 +41,10 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                                     className="h-4 w-4"
                                     onChange={() => onToggleComplete(t.id)}
                                 />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline text-[0.6rem]"
+                                    onClick={() => onSelectNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>
@@ -56,7 +59,7 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                         {completedToday.map((t) => (
                             <li key={t.id} className="flex items-center gap-2 opacity-80">
                                 <input type="checkbox" className="h-4 w-4" checked readOnly />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button className="text-left hover:underline" onClick={() => onSelectNode(t.id)}>
                                     {t.label}
                                 </button>
                             </li>

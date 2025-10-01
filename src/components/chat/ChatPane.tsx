@@ -1,4 +1,4 @@
-import React, { useState, FormEvent, useEffect, useRef } from 'react';
+import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
 import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
@@ -23,6 +23,9 @@ const ChatPane = () => {
         updateMessage,
         selectBranch,
         updateThreadTitle,
+        updateDraft,
+        clearDraft,
+        drafts,
         messages: allMessages // get all messages for parent lookup
     } = useChatContext();
 
@@ -52,6 +55,21 @@ const ChatPane = () => {
         }
     }, [messages.length, streamingMessageId]);
 
+    const activeDraft = useMemo(() => (activeThreadId ? drafts[activeThreadId] ?? '' : ''), [activeThreadId, drafts]);
+
+    useEffect(() => {
+        if (input !== activeDraft) {
+            setInput(activeDraft);
+        }
+    }, [activeDraft, input]);
+
+    const handleInputChange = (value: string) => {
+        setInput(value);
+        if (activeThreadId) {
+            updateDraft(activeThreadId, value);
+        }
+    };
+
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
         setIsLoading(true);
@@ -78,6 +96,8 @@ const ChatPane = () => {
 
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+        clearDraft(threadId);
+        setInput('');
 
         // Add a blank assistant message to begin streaming
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id, toolCalls: [] });
@@ -91,10 +111,10 @@ const ChatPane = () => {
                 onStream: (update) => {
                     console.log('[ChatPane][Streaming update]', update);
                     if (update.content !== undefined) {
-                        updateMessage(assistantMessage.id, { content: update.content });
+                    updateMessage(assistantMessage.id, { content: update.content });
                     }
                     if (update.reasoning !== undefined) {
-                        updateMessage(assistantMessage.id, { thinking: update.reasoning });
+                    updateMessage(assistantMessage.id, { thinking: update.reasoning });
                     }
                     if (update.toolCall) {
                         console.log('[ChatPane][Tool update detected]', update.toolCall);
@@ -441,7 +461,7 @@ const ChatPane = () => {
                 <form onSubmit={handleSubmit} className="flex items-center gap-2">
                     <Input
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => handleInputChange(e.target.value)}
                         placeholder="Ask anything..."
                         disabled={isLoading}
                         className="flex-1"
