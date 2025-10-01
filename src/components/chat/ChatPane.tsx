@@ -1,17 +1,17 @@
-import React, { useState, FormEvent, useEffect, useRef } from 'react';
+import React, { useState, FormEvent, useEffect, useRef, FocusEvent } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
-import { Input } from '../ui/input';
+import { getGeminiResponse, getTitleSuggestion, getToolIntent, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
+import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
+import { Send, Square, PlusCircle, Cog } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
-import ModelSelectionDialog from './ModelSelectionDialog';
 import { useConversationContext } from '@/hooks/useConversationContext';
+import { cn } from '@/lib/utils';
 
 const ChatPane = () => {
     const {
@@ -33,12 +33,12 @@ const ChatPane = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
     const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
-    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
+    const [isInputFocused, setIsInputFocused] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
-    const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
+    const { selectedModel, recordModelUsage, isToolIntentCheckEnabled } = useModelSelection();
     const { applyContextToMessages, transforms } = useConversationContext();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
@@ -87,6 +87,21 @@ const ChatPane = () => {
         console.log('[ChatPane] Sending payload to API:', apiMessages);
         console.log('[ChatPane][MCP] Available tools:', availableTools);
 
+        let toolsForRequest: ApiToolDefinition[] | undefined =
+            toolDefinitions.length > 0 ? toolDefinitions : undefined;
+
+        if (toolsForRequest && isToolIntentCheckEnabled(selectedModel.id)) {
+            try {
+                const intent = await getToolIntent(content);
+                console.log('[ChatPane][Intent] Classified intent as', intent);
+                if (intent === 'CONVERSATION') {
+                    toolsForRequest = undefined;
+                }
+            } catch (intentError) {
+                console.warn('[ChatPane][Intent] Failed to classify intent, defaulting to tools', intentError);
+            }
+        }
+
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
         clearDraft(threadId);
@@ -134,7 +149,7 @@ const ChatPane = () => {
                     }
                 },
                 signal: controller.signal,
-                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                tools: toolsForRequest,
                 model: selectedModel.id,
                 transforms: transforms.length > 0 ? transforms : undefined,
             });
@@ -281,7 +296,7 @@ const ChatPane = () => {
                                 }
                             },
                             signal: controller.signal,
-                            tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            tools: toolsForRequest,
                             model: selectedModel.id,
                             transforms: transforms.length > 0 ? transforms : undefined,
                         });
@@ -296,20 +311,22 @@ const ChatPane = () => {
 
             // After the first response, fetch an automatic title suggestion
             if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
-                try {
-                    const actingMessages = [
-                        ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-                        ...historyChain.map(({ role, content }) => ({ role, content })),
-                        { role: 'user' as const, content },
-                        { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
-                    ];
-                    const title = await getTitleSuggestion(actingMessages);
-                    if (title) {
-                        updateThreadTitle(activeThreadId!, title);
+                const actingMessages = [
+                    ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+                    ...historyChain.map(({ role, content }) => ({ role, content })),
+                    { role: 'user' as const, content },
+                    { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
+                ];
+                void (async () => {
+                    try {
+                        const title = await getTitleSuggestion(actingMessages);
+                        if (title) {
+                            updateThreadTitle(activeThreadId!, title);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch title suggestion:', err);
                     }
-                } catch (err) {
-                    console.warn('Failed to fetch title suggestion:', err);
-                }
+                })();
             }
 
         } catch (error) {
@@ -398,6 +415,24 @@ const ChatPane = () => {
         }
     };
 
+    const handleInputFocusWithin = () => {
+        setIsInputFocused(true);
+    };
+
+    const handleInputBlurWithin = (event: FocusEvent<HTMLDivElement>) => {
+        const nextFocusTarget = event.relatedTarget as Node | null;
+        if (!event.currentTarget.contains(nextFocusTarget)) {
+            setIsInputFocused(false);
+        }
+    };
+
+    const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+        }
+    };
+
     if (!activeThread) {
         return (
             <div className="flex h-full w-full flex-col items-center justify-center bg-background">
@@ -410,8 +445,8 @@ const ChatPane = () => {
     }
 
     return (
-        <div className="flex h-full flex-col bg-background">
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <div className="relative flex h-full flex-col bg-background">
+            <ScrollArea className="flex-1 p-4 pb-[200px]" ref={scrollAreaRef}>
                 <div className="flex flex-col gap-4">
                     {messages.map((msg) => {
                         let branchInfo;
@@ -450,12 +485,25 @@ const ChatPane = () => {
                     })}
                 </div>
             </ScrollArea>
-            <div className="border-t p-4">
-                <form onSubmit={handleSubmit} className="flex items-center gap-2">
-                    <Input
+            <div
+                className={cn(
+                    'absolute inset-x-0 bottom-0 border-t bg-background transition-all duration-300 ease-in-out',
+                    isInputFocused ? 'h-1/2 shadow-xl' : 'h-[140px]'
+                )}
+                onFocusCapture={handleInputFocusWithin}
+                onBlurCapture={handleInputBlurWithin}
+            >
+                <form
+                    onSubmit={handleSubmit}
+                    className={cn(
+                        'flex h-full gap-3 px-4 py-4 transition-all duration-300',
+                        isInputFocused ? 'flex-col' : 'flex-row items-center'
+                    )}
+                >
+                    <Textarea
                         value={input}
-                        onChange={(e) => {
-                            const value = e.target.value;
+                        onChange={(event) => {
+                            const value = event.target.value;
                             let threadId = activeThreadId;
                             if (!threadId) {
                                 threadId = createThread();
@@ -465,59 +513,45 @@ const ChatPane = () => {
                                 updateDraft(threadId, value);
                             }
                         }}
+                        onKeyDown={handleTextareaKeyDown}
                         placeholder="Ask anything..."
                         disabled={isLoading}
-                        className="flex-1"
+                        className={cn(
+                            'resize-none transition-all duration-300 !min-h-[48px]',
+                            isInputFocused ? 'flex-1 !min-h-0' : 'h-12'
+                        )}
                     />
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div
+                        className={cn(
+                            'flex shrink-0 flex-wrap items-center gap-2',
+                            isInputFocused ? 'w-full justify-end' : 'justify-start'
+                        )}
+                    >
                         <Button
                             type="button"
                             variant="secondary"
-                            onClick={() => setModelDialogOpen(true)}
-                            className="h-10 w-10 p-0 bg-muted text-black hover:bg-muted/80"
-                            title={`Select model (current: ${selectedModel.label ?? selectedModel.id})`}
+                            onClick={() => setInstructionDialogOpen(true)}
+                            className="h-10 w-10 p-0"
+                            title="Manage settings"
                         >
-                            <Sparkles className="h-4 w-4" />
+                            <Cog className="h-4 w-4" />
+                            <span className="sr-only">Open settings</span>
                         </Button>
-                        <div className="flex min-w-0 flex-col text-left leading-tight">
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Model</span>
-                            <span
-                                className="truncate text-xs text-foreground"
-                                title={selectedModel.label ?? selectedModel.id}
-                            >
-                                {selectedModel.label ?? selectedModel.id}
-                            </span>
-                        </div>
+                        {isLoading ? (
+                            <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
+                                <Square className="h-4 w-4" />
+                                <span className="sr-only">Stop generating</span>
+                            </Button>
+                        ) : (
+                            <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
+                                <Send className="h-4 w-4" />
+                                <span className="sr-only">Send message</span>
+                            </Button>
+                        )}
                     </div>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
-                        className="h-10 w-10 p-0"
-                        title="Manage system instructions"
-                    >
-                        <Cog className="h-4 w-4" />
-                    </Button>
-                    {isLoading ? (
-                        <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
-                            <Square className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    )}
                 </form>
             </div>
             <SettingsDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
-            <ModelSelectionDialog
-                open={isModelDialogOpen}
-                onOpenChange={setModelDialogOpen}
-                onSelectModel={(model) => {
-                    setSelectedModel(model);
-                    setModelDialogOpen(false);
-                }}
-            />
         </div>
     );
 };

@@ -5,6 +5,7 @@ import { ModelSelectionContext, SelectedModel } from './modelSelectionProviderCo
 // timestamps in localStorage and prune entries beyond 72h when accessed.
 
 const STORAGE_KEY = 'model_usage_history_v1';
+const TOOL_INTENT_STORAGE_PREFIX = 'tool_intent_check_';
 export const SEED_MODELS: SelectedModel[] = [
     { id: 'openai/gpt-5', label: 'OpenAI GPT-5' },
     { id: 'google/gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
@@ -49,9 +50,62 @@ const pruneHistory = (history: UsageHistoryEntry[]): UsageHistoryEntry[] => {
     return history.filter((entry) => entry.timestamp >= cutoff);
 };
 
+const getToolIntentStorageKey = (modelId: string) => `${TOOL_INTENT_STORAGE_PREFIX}${modelId}`;
+
+const getToolIntentDefault = (modelId: string) => modelId.toLowerCase().includes('gemini');
+
+const readToolIntentValue = (modelId: string): boolean | null => {
+    if (typeof window === 'undefined') return getToolIntentDefault(modelId);
+    try {
+        const key = getToolIntentStorageKey(modelId);
+        const raw = window.localStorage.getItem(key);
+        if (raw === null) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'boolean') {
+            return parsed;
+        }
+        if (typeof parsed === 'string') {
+            const normalized = parsed.trim().toLowerCase();
+            if (normalized === 'true' || normalized === 'false') {
+                return normalized === 'true';
+            }
+        }
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to read tool intent preference', error);
+    }
+    return null;
+};
+
+const writeToolIntentValue = (modelId: string, value: boolean) => {
+    if (typeof window === 'undefined') return;
+    try {
+        const key = getToolIntentStorageKey(modelId);
+        window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to persist tool intent preference', error);
+    }
+};
+
 export const ModelSelectionProvider = ({ children }: { children: ReactNode }) => {
     const [selectedModel, setSelectedModelState] = useState<SelectedModel>(() => SEED_MODELS[1]);
     const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>(() => pruneHistory(readUsageHistory()));
+    const [toolIntentPreferences, setToolIntentPreferences] = useState<Record<string, boolean>>(() => {
+        if (typeof window === 'undefined') return {};
+        const initial: Record<string, boolean> = {};
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+            const key = window.localStorage.key(index);
+            if (!key || !key.startsWith(TOOL_INTENT_STORAGE_PREFIX)) continue;
+            const modelId = key.slice(TOOL_INTENT_STORAGE_PREFIX.length);
+            if (!modelId) continue;
+            const stored = readToolIntentValue(modelId);
+            if (typeof stored === 'boolean') {
+                initial[modelId] = stored;
+            }
+        }
+        return initial;
+    });
 
     useEffect(() => {
         writeUsageHistory(usageHistory);
@@ -80,6 +134,25 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
         setUsageHistory((prev) => pruneHistory([...prev, { modelId, timestamp: Date.now() }]));
     }, []);
 
+    const isToolIntentCheckEnabled = useCallback(
+        (modelId: string) => {
+            if (modelId in toolIntentPreferences) {
+                return toolIntentPreferences[modelId];
+            }
+            const stored = readToolIntentValue(modelId);
+            if (typeof stored === 'boolean') {
+                return stored;
+            }
+            return getToolIntentDefault(modelId);
+        },
+        [toolIntentPreferences],
+    );
+
+    const setToolIntentCheckEnabled = useCallback((modelId: string, enabled: boolean) => {
+        setToolIntentPreferences((prev) => ({ ...prev, [modelId]: enabled }));
+        writeToolIntentValue(modelId, enabled);
+    }, []);
+
     const contextValue = useMemo(
         () => ({
             selectedModel,
@@ -88,8 +161,19 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
             getUsageCount,
             getUsageScore,
             usageCounts,
+            isToolIntentCheckEnabled,
+            setToolIntentCheckEnabled,
         }),
-        [getUsageCount, getUsageScore, selectedModel, setSelectedModel, recordModelUsage, usageCounts]
+        [
+            getUsageCount,
+            getUsageScore,
+            selectedModel,
+            setSelectedModel,
+            recordModelUsage,
+            usageCounts,
+            isToolIntentCheckEnabled,
+            setToolIntentCheckEnabled,
+        ]
     );
 
     return (

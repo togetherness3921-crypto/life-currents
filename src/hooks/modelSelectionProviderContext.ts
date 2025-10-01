@@ -12,6 +12,8 @@ export interface ModelSelectionContextValue {
     getUsageCount: (modelId: string) => number;
     getUsageScore: (modelId: string) => number;
     usageCounts: Record<string, number>;
+    isToolIntentCheckEnabled: (modelId: string) => boolean;
+    setToolIntentCheckEnabled: (modelId: string, enabled: boolean) => void;
 }
 
 export const ModelSelectionContext = createContext<ModelSelectionContextValue | undefined>(undefined);
