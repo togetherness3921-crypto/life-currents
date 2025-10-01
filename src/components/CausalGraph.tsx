@@ -27,6 +27,8 @@ import { useTodayTime } from '@/hooks/useTodayTime';
 import ProgressGraphPanel from './ProgressGraphPanel';
 import StatsPanel from './StatsPanel';
 import ChatLayout from './chat/ChatLayout';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -34,6 +36,97 @@ const nodeTypes = {
   milestoneNode: MilestoneNode,
   validationNode: ValidationNode,
   goalNode: GoalNode,
+};
+
+const DEFAULT_TOP_LAYOUT = [70, 15, 15] as const;
+const DEFAULT_MAIN_VERTICAL_LAYOUT = [65, 15, 20] as const;
+const DEFAULT_STATS_LAYOUT = [75, 25] as const;
+
+const TOP_LAYOUT_STORAGE_KEY = 'layout_top_horizontal';
+const MAIN_VERTICAL_STORAGE_KEY = 'layout_main_vertical';
+const STATS_LAYOUT_STORAGE_KEY = 'layout_stats_horizontal';
+const LAYOUT_PENDING_KEY = 'layout_border_pending';
+
+const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const readLayoutSizes = (key: string, fallback: readonly number[]) => {
+  if (!isBrowser) return [...fallback];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [...fallback];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length === fallback.length) {
+      return parsed.map((value) => Number(value) || 0);
+    }
+  } catch (error) {
+    console.warn('[Layout] Failed to parse layout sizes', key, error);
+  }
+  return [...fallback];
+};
+
+const writeLayoutSizes = (key: string, sizes: number[]) => {
+  if (!isBrowser) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(sizes));
+  } catch (error) {
+    console.warn('[Layout] Failed to persist layout sizes', key, error);
+  }
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const computeTopSizesFromPositions = (
+  first: number | undefined,
+  second: number | undefined,
+  fallback: number[],
+) => {
+  if (typeof first !== 'number' || Number.isNaN(first) || typeof second !== 'number' || Number.isNaN(second)) {
+    return [...fallback];
+  }
+  let pos1 = clamp(first, 5, 90);
+  let pos2 = clamp(second, pos1 + 5, 95);
+  if (pos2 <= pos1 + 5) pos2 = pos1 + 5;
+  if (pos2 >= 95) pos2 = 95;
+  const left = pos1;
+  const middle = clamp(pos2 - pos1, 5, 90);
+  let right = 100 - left - middle;
+  if (right < 5) {
+    const deficit = 5 - right;
+    const adjustedMiddle = clamp(middle - deficit, 5, 90);
+    return [left, adjustedMiddle, 100 - left - adjustedMiddle];
+  }
+  return [left, middle, right];
+};
+
+const computeVerticalSizesFromPositions = (
+  first: number | undefined,
+  second: number | undefined,
+  fallback: number[],
+) => {
+  if (typeof first !== 'number' || Number.isNaN(first) || typeof second !== 'number' || Number.isNaN(second)) {
+    return [...fallback];
+  }
+  let pos1 = clamp(first, 5, 90);
+  let pos2 = clamp(second, pos1 + 5, 95);
+  if (pos2 <= pos1 + 5) pos2 = pos1 + 5;
+  if (pos2 >= 95) pos2 = 95;
+  const top = pos1;
+  const middle = clamp(pos2 - pos1, 5, 90);
+  let bottom = 100 - top - middle;
+  if (bottom < 5) {
+    const deficit = 5 - bottom;
+    const adjustedMiddle = clamp(middle - deficit, 5, 90);
+    return [top, adjustedMiddle, 100 - top - adjustedMiddle];
+  }
+  return [top, middle, bottom];
+};
+
+const computeStatsSizesFromPosition = (position: number | undefined, fallback: number[]) => {
+  if (typeof position !== 'number' || Number.isNaN(position)) {
+    return [...fallback];
+  }
+  const left = clamp(position, 10, 90);
+  return [left, 100 - left];
 };
 
 export default function CausalGraph() {
@@ -65,24 +158,181 @@ export default function CausalGraph() {
   const targetFitGraphIdRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
-  const { now, dayKey, startOfDay, endOfDay } = useTodayTime(60000);
+  const { now, startOfDay, endOfDay } = useTodayTime(60000);
+  const { toast } = useToast();
 
-  // Persist panel sizes in localStorage
-  const PANEL_SIZES_KEY = 'panel_sizes_v1';
-  const [panelSizes, setPanelSizes] = useState<number[]>(() => {
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+
+  const [topLayout, setTopLayout] = useState<number[]>(() => readLayoutSizes(TOP_LAYOUT_STORAGE_KEY, DEFAULT_TOP_LAYOUT));
+  const [mainVerticalLayout, setMainVerticalLayout] = useState<number[]>(() => readLayoutSizes(MAIN_VERTICAL_STORAGE_KEY, DEFAULT_MAIN_VERTICAL_LAYOUT));
+  const [statsLayout, setStatsLayout] = useState<number[]>(() => readLayoutSizes(STATS_LAYOUT_STORAGE_KEY, DEFAULT_STATS_LAYOUT));
+  const [layoutVersion, setLayoutVersion] = useState(0);
+
+  const initialPendingLayout = useMemo(() => {
+    if (!isBrowser) return {} as Record<string, { axis: 'x' | 'y'; position: number }>;
     try {
-      const raw = localStorage.getItem(PANEL_SIZES_KEY);
-      if (!raw) return [70, 15, 15];
+      const raw = window.localStorage.getItem(LAYOUT_PENDING_KEY);
+      if (!raw) return {} as Record<string, { axis: 'x' | 'y'; position: number }>;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === 3) return parsed;
-      return [70, 15, 15];
-    } catch {
-      return [70, 15, 15];
+      if (!Array.isArray(parsed)) return {} as Record<string, { axis: 'x' | 'y'; position: number }>;
+      const result: Record<string, { axis: 'x' | 'y'; position: number }> = {};
+      parsed.forEach((row: any) => {
+        if (!row || typeof row.border_id !== 'string') return;
+        const axis: 'x' | 'y' = row.axis === 'y' ? 'y' : 'x';
+        const position = Number(row.position);
+        if (!Number.isNaN(position)) {
+          result[row.border_id] = { axis, position };
+        }
+      });
+      return result;
+    } catch (error) {
+      console.warn('[Layout] Failed to parse pending layout operations', error);
+      return {} as Record<string, { axis: 'x' | 'y'; position: number }>;
     }
-  });
-  const onLayout = useCallback((sizes: number[]) => {
-    setPanelSizes(sizes);
-    try { localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes)); } catch { }
+  }, []);
+
+  const pendingLayoutRef = useRef<Record<string, { axis: 'x' | 'y'; position: number }>>(initialPendingLayout);
+  const layoutFlushTimerRef = useRef<number | null>(null);
+
+  const persistPendingLayoutToStorage = useCallback(() => {
+    if (!isBrowser) return;
+    const entries = Object.entries(pendingLayoutRef.current).map(([border_id, data]) => ({
+      border_id,
+      axis: data.axis,
+      position: data.position,
+    }));
+    if (entries.length > 0) {
+      window.localStorage.setItem(LAYOUT_PENDING_KEY, JSON.stringify(entries));
+    } else {
+      window.localStorage.removeItem(LAYOUT_PENDING_KEY);
+    }
+  }, []);
+
+  const flushLayoutUpdates = useCallback(async () => {
+    if (!navigator.onLine) {
+      persistPendingLayoutToStorage();
+      return;
+    }
+    const entries = Object.entries(pendingLayoutRef.current);
+    if (entries.length === 0) return;
+    const payload = entries.map(([border_id, data]) => ({
+      border_id,
+      axis: data.axis,
+      position: data.position,
+    }));
+    try {
+      const { error } = await (supabase as any)
+        .from('layout_borders')
+        .upsert(payload, { onConflict: 'border_id' });
+      if (error) throw error;
+      pendingLayoutRef.current = {};
+      persistPendingLayoutToStorage();
+    } catch (error) {
+      console.error('[Layout] Failed to persist layout borders', error);
+      persistPendingLayoutToStorage();
+    }
+  }, [persistPendingLayoutToStorage]);
+
+  const queueBorderUpdates = useCallback(
+    (updates: Array<{ id: string; axis: 'x' | 'y'; position: number }>) => {
+      updates.forEach(({ id, axis, position }) => {
+        pendingLayoutRef.current[id] = { axis, position };
+      });
+      persistPendingLayoutToStorage();
+      if (layoutFlushTimerRef.current) {
+        window.clearTimeout(layoutFlushTimerRef.current);
+      }
+      layoutFlushTimerRef.current = window.setTimeout(() => {
+        layoutFlushTimerRef.current = null;
+        flushLayoutUpdates();
+      }, 400);
+    },
+    [flushLayoutUpdates, persistPendingLayoutToStorage],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (layoutFlushTimerRef.current) {
+        window.clearTimeout(layoutFlushTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(pendingLayoutRef.current).length > 0) {
+      flushLayoutUpdates();
+    }
+  }, [flushLayoutUpdates]);
+
+  useEffect(() => {
+    const handleOnline = () => flushLayoutUpdates();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [flushLayoutUpdates]);
+
+  const topLayoutRef = useRef(topLayout);
+  const mainVerticalLayoutRef = useRef(mainVerticalLayout);
+  const statsLayoutRef = useRef(statsLayout);
+
+  useEffect(() => {
+    topLayoutRef.current = topLayout;
+  }, [topLayout]);
+
+  useEffect(() => {
+    mainVerticalLayoutRef.current = mainVerticalLayout;
+  }, [mainVerticalLayout]);
+
+  useEffect(() => {
+    statsLayoutRef.current = statsLayout;
+  }, [statsLayout]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('layout_borders')
+          .select('border_id, axis, position');
+        if (error) throw error;
+        if (!data || cancelled) return;
+        const map = new Map<string, number>();
+        data.forEach((row: any) => {
+          if (!row || typeof row.border_id !== 'string') return;
+          const position = Number(row.position);
+          if (!Number.isNaN(position)) {
+            map.set(row.border_id, position);
+          }
+        });
+        const nextTop = computeTopSizesFromPositions(
+          map.get('top-horizontal-1'),
+          map.get('top-horizontal-2'),
+          topLayoutRef.current,
+        );
+        const nextMain = computeVerticalSizesFromPositions(
+          map.get('main-vertical-1'),
+          map.get('main-vertical-2'),
+          mainVerticalLayoutRef.current,
+        );
+        const nextStats = computeStatsSizesFromPosition(
+          map.get('stats-horizontal-1'),
+          statsLayoutRef.current,
+        );
+        if (cancelled) return;
+        setTopLayout(nextTop);
+        setMainVerticalLayout(nextMain);
+        setStatsLayout(nextStats);
+        writeLayoutSizes(TOP_LAYOUT_STORAGE_KEY, nextTop);
+        writeLayoutSizes(MAIN_VERTICAL_STORAGE_KEY, nextMain);
+        writeLayoutSizes(STATS_LAYOUT_STORAGE_KEY, nextStats);
+        setLayoutVersion((version) => version + 1);
+      } catch (error) {
+        console.error('[Layout] Failed to load layout borders', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const logViewport = useCallback((label: string) => {
@@ -272,6 +522,7 @@ export default function CausalGraph() {
       ...node,
       data: {
         ...node.data,
+        isHighlighted: highlightedNodeId === node.id,
         subObjectives,
         onDelete: () => deleteNode(node.id),
         onComplete: () => onNodeComplete(node.id),
@@ -283,13 +534,84 @@ export default function CausalGraph() {
   // Task panel actions
   const nodesById = useMemo(() => (docData?.nodes || {}) as Record<string, any>, [docData?.nodes]);
   const onToggleComplete = useCallback((id: string) => setNodeStatus(id, 'completed'), [setNodeStatus]);
-  const onZoomToNode = useCallback((id: string) => {
-    if (!reactFlowInstance.current) return;
-    const node = reactFlowInstance.current.getNode(id);
-    if (node) {
-      reactFlowInstance.current.fitView({ nodes: [node], duration: 800, padding: 0.3 });
-    }
+  const handleTopLayoutChange = useCallback(
+    (sizes: number[]) => {
+      if (sizes.length !== 3) return;
+      setTopLayout(sizes);
+      writeLayoutSizes(TOP_LAYOUT_STORAGE_KEY, sizes);
+      queueBorderUpdates([
+        { id: 'top-horizontal-1', axis: 'x', position: sizes[0] },
+        { id: 'top-horizontal-2', axis: 'x', position: sizes[0] + sizes[1] },
+      ]);
+    },
+    [queueBorderUpdates],
+  );
+
+  const handleMainVerticalLayoutChange = useCallback(
+    (sizes: number[]) => {
+      if (sizes.length !== 3) return;
+      setMainVerticalLayout(sizes);
+      writeLayoutSizes(MAIN_VERTICAL_STORAGE_KEY, sizes);
+      queueBorderUpdates([
+        { id: 'main-vertical-1', axis: 'y', position: sizes[0] },
+        { id: 'main-vertical-2', axis: 'y', position: sizes[0] + sizes[1] },
+      ]);
+    },
+    [queueBorderUpdates],
+  );
+
+  const handleStatsLayoutChange = useCallback(
+    (sizes: number[]) => {
+      if (sizes.length !== 2) return;
+      setStatsLayout(sizes);
+      writeLayoutSizes(STATS_LAYOUT_STORAGE_KEY, sizes);
+      queueBorderUpdates([{ id: 'stats-horizontal-1', axis: 'x', position: sizes[0] }]);
+    },
+    [queueBorderUpdates],
+  );
+
+  const focusNodeById = useCallback(
+    (id: string) => {
+      if (!reactFlowInstance.current) return false;
+      const node = reactFlowInstance.current.getNode(id);
+      if (!node) return false;
+      reactFlowInstance.current.fitView({ nodes: [node], duration: 600, padding: 0.3 });
+      setHighlightedNodeId(id);
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        setHighlightedNodeId(null);
+        highlightTimeoutRef.current = null;
+      }, 1600);
+      return true;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    setHighlightedNodeId(null);
+  }, [activeGraphId]);
+
+  const handleSurfaceSelect = useCallback(
+    (id: string) => {
+      if (!focusNodeById(id)) {
+        toast({
+          title: 'Node not found',
+          description: 'We could not locate that item in the current graph.',
+        });
+      }
+    },
+    [focusNodeById, toast],
+  );
 
   if (loading) {
     return (
@@ -304,16 +626,21 @@ export default function CausalGraph() {
 
   return (
     <div className="w-full h-[100dvh] bg-graph-background">
-      {/* Manual commit timestamp badge (manually updated by AI per commit) */}
-      <div className="absolute top-2 left-2 z-[9999] text-[10px] leading-none px-2 py-1 rounded bg-black/60 text-white border border-white/10">
-        Commit: 2025-09-17T02:45:00Z
-      </div>
-
-      <ResizablePanelGroup direction="vertical" className="h-full w-full">
-        <ResizablePanel defaultSize={65}>
-          <ResizablePanelGroup direction="horizontal" onLayout={onLayout} className="h-full">
+      <ResizablePanelGroup
+        key={`main-${layoutVersion}`}
+        direction="vertical"
+        className="h-full w-full"
+        onLayout={handleMainVerticalLayoutChange}
+      >
+        <ResizablePanel defaultSize={mainVerticalLayout[0]}>
+          <ResizablePanelGroup
+            key={`top-${layoutVersion}`}
+            direction="horizontal"
+            onLayout={handleTopLayoutChange}
+            className="h-full"
+          >
             {/* Left: Main graph */}
-            <ResizablePanel defaultSize={panelSizes[0]} minSize={40} className="relative">
+            <ResizablePanel defaultSize={topLayout[0]} minSize={40} className="relative">
               <ReactFlow
                 nodes={nodesWithActions}
                 edges={edges}
@@ -343,7 +670,8 @@ export default function CausalGraph() {
                 }}
               >
                 <Controls
-                  className="bg-card border-border text-foreground p-1 [&>button]:w-6 [&>button]:h-6"
+                  className="bg-card border-border text-foreground p-1 scale-[0.5] origin-bottom-left [&>button]:w-12 [&>button]:h-12 [&>button]:rounded-md"
+                  style={{ bottom: 8, left: 8 }}
                   showZoom={false}
                   showFitView={true}
                   showInteractive={false}
@@ -394,11 +722,11 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Middle: Daily task checklist */}
-            <ResizablePanel defaultSize={panelSizes[1]} minSize={10} className="relative">
+            <ResizablePanel defaultSize={topLayout[1]} minSize={10} className="relative">
               <DailyTaskPanel
                 nodesById={nodesById}
                 onToggleComplete={onToggleComplete}
-                onZoomToNode={onZoomToNode}
+                onSelectNode={handleSurfaceSelect}
                 startOfDay={startOfDay}
                 endOfDay={endOfDay}
               />
@@ -406,25 +734,36 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Right: Daily calendar view */}
-            <ResizablePanel defaultSize={panelSizes[2]} minSize={10} className="relative">
-              <DailyCalendarPanel nodesById={nodesById} startOfDay={startOfDay} endOfDay={endOfDay} now={now} />
+            <ResizablePanel defaultSize={topLayout[2]} minSize={10} className="relative">
+              <DailyCalendarPanel
+                nodesById={nodesById}
+                startOfDay={startOfDay}
+                endOfDay={endOfDay}
+                now={now}
+                onSelect={handleSurfaceSelect}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={15} minSize={10}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={75} minSize={30}>
+        <ResizablePanel defaultSize={mainVerticalLayout[1]} minSize={10}>
+          <ResizablePanelGroup
+            key={`stats-${layoutVersion}`}
+            direction="horizontal"
+            className="h-full"
+            onLayout={handleStatsLayoutChange}
+          >
+            <ResizablePanel defaultSize={statsLayout[0]} minSize={30}>
               <ProgressGraphPanel history={docData?.historical_progress} />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={25} minSize={20}>
+            <ResizablePanel defaultSize={statsLayout[1]} minSize={20}>
               <StatsPanel history={docData?.historical_progress} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={20} minSize={10}>
+        <ResizablePanel defaultSize={mainVerticalLayout[2]} minSize={10}>
           <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>

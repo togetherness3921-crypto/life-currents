@@ -11,12 +11,15 @@ export interface ToolCallState {
 
 export interface Message {
     id: string;
-    parentId: string | null; 
-    role: 'user' | 'assistant';
+    threadId: string;
+    parentId: string | null;
+    role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
     thinking?: string;
     children: string[];
     toolCalls?: ToolCallState[];
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 export type MessageStore = Record<string, Message>;
@@ -26,6 +29,7 @@ export interface ChatThread {
     title: string;
     leafMessageId: string | null;
     createdAt: Date;
+    updatedAt: Date;
     selectedChildByMessageId: Record<string, string>;
     rootChildren: string[];
     selectedRootChild?: string;
@@ -34,16 +38,20 @@ export interface ChatThread {
 export interface ChatContextValue {
     threads: ChatThread[];
     messages: MessageStore;
+    drafts: Record<string, string>;
     activeThreadId: string | null;
-    
+
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;
-    addMessage: (threadId: string, message: Omit<Message, 'id' | 'children'>) => Message;
+    addMessage: (threadId: string, message: Omit<Message, 'id' | 'children' | 'toolCalls' | 'threadId'> & { toolCalls?: ToolCallState[] }) => Message;
     getMessageChain: (leafId: string | null) => Message[];
     updateMessage: (messageId: string, updates: Partial<Message>) => void;
     selectBranch: (threadId: string | null, parentId: string | null, childId: string) => void;
     updateThreadTitle: (threadId: string, title: string) => void;
+    updateDraft: (threadId: string, text: string) => void;
+    clearDraft: (threadId: string) => void;
+    refreshFromServer: () => Promise<void>;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);

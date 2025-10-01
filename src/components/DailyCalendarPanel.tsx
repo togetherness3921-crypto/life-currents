@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
 type CalendarPanelProps = {
@@ -6,6 +6,7 @@ type CalendarPanelProps = {
     startOfDay: Date;
     endOfDay: Date;
     now: Date;
+    onSelect: (id: string) => void;
 };
 
 function isWithinDay(iso?: string, start?: Date, end?: Date) {
@@ -18,8 +19,9 @@ function minutesSinceStartOfDay(d: Date, startOfDay: Date) {
     return Math.max(0, Math.floor((d.getTime() - startOfDay.getTime()) / 60000));
 }
 
-export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now }: CalendarPanelProps) {
+export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now, onSelect }: CalendarPanelProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const hasCenteredRef = useRef(false);
 
     const items = useMemo(() => {
         const result: Array<{ id: string; label: string; start: Date; end: Date }> = [];
@@ -40,14 +42,17 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
     const heightPx = totalMinutes * pxPerMinute;
     const nowOffset = minutesSinceStartOfDay(now, startOfDay) * pxPerMinute;
 
-    // Auto-scroll to keep current time in view
+    // Auto-scroll to center the current time indicator on initial load
     useEffect(() => {
         const el = containerRef.current;
-        if (!el) return;
-        const padding = 120;
-        if (nowOffset < el.scrollTop + padding || nowOffset > el.scrollTop + el.clientHeight - padding) {
-            el.scrollTo({ top: Math.max(0, nowOffset - el.clientHeight / 2), behavior: 'smooth' });
-        }
+        if (!el || hasCenteredRef.current) return;
+        const timer = window.setTimeout(() => {
+            if (!el) return;
+            const target = Math.max(0, nowOffset - el.clientHeight / 2);
+            el.scrollTo({ top: target, behavior: 'smooth' });
+            hasCenteredRef.current = true;
+        }, 150);
+        return () => window.clearTimeout(timer);
     }, [nowOffset]);
 
     const hourLabel = (i: number) => {
@@ -86,10 +91,24 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
                             ? 'bg-green-500/40 border-green-500/60'
                             : 'bg-primary/20 border-primary/40';
                         return (
-                            <div key={it.id} className={cn('absolute left-0 right-0 rounded-sm border p-1 text-[10px]', bubbleClass)}
-                                style={{ top, height }}>
+                            <button
+                                key={it.id}
+                                type="button"
+                                onClick={() => onSelect(it.id)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        onSelect(it.id);
+                                    }
+                                }}
+                                className={cn(
+                                    'absolute left-0 right-0 rounded-sm border p-1 text-[10px] text-left cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary/60',
+                                    bubbleClass,
+                                )}
+                                style={{ top, height }}
+                            >
                                 <div className="font-medium text-foreground truncate">{it.label}</div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

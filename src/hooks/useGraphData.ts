@@ -155,12 +155,12 @@ export function useGraphData() {
       // Fetch the single graph document
       const { data: docRow, error: docError } = await (supabase as any)
         .from('graph_documents')
-        .select('data')
+        .select('document')
         .eq('id', 'main')
         .maybeSingle();
 
       if (docError) throw docError;
-      const data = (docRow?.data as any) || {};
+      const data = (docRow?.document as any) || {};
       setDocData(data);
 
       console.log('[Graph] Initial fetch complete. Active graph:', activeGraphId);
@@ -335,7 +335,7 @@ export function useGraphData() {
 
       const { error } = await (supabase as any)
         .from('graph_documents')
-        .update({ data: nextDoc })
+        .update({ document: nextDoc })
         .eq('id', 'main');
       if (error) throw error;
 
@@ -413,7 +413,7 @@ export function useGraphData() {
 
       const { error } = await (supabase as any)
         .from('graph_documents')
-        .update({ data: nextDoc })
+        .update({ document: nextDoc })
         .eq('id', 'main');
       if (error) throw error;
 
@@ -442,7 +442,7 @@ export function useGraphData() {
 
       const { error } = await (supabase as any)
         .from('graph_documents')
-        .update({ data: nextDoc })
+        .update({ document: nextDoc })
         .eq('id', 'main');
 
       if (error) throw error;
@@ -599,7 +599,7 @@ export function useGraphData() {
     if (JSON.stringify(newHistory) !== JSON.stringify(docData.historical_progress || {})) {
       const nextDoc = { ...docData, historical_progress: newHistory };
       setDocData(nextDoc);
-      await supabase.from('graph_documents').update({ data: nextDoc }).eq('id', 'main');
+      await supabase.from('graph_documents').update({ document: nextDoc }).eq('id', 'main');
     }
   };
 
@@ -622,7 +622,7 @@ export function useGraphData() {
 
         const { error } = await (supabase as any)
           .from('graph_documents')
-          .update({ data: nextDoc })
+        .update({ document: nextDoc })
           .eq('id', 'main');
         if (error) throw error;
 
@@ -656,7 +656,7 @@ export function useGraphData() {
         try {
           // Skip handling if this client just wrote
           if (localOperationsRef.current.size > 0) return;
-          const next = payload?.new?.data;
+          const next = payload?.new?.document;
           if (next) {
             setDocData(next);
             // buildGraphForActiveId(next, activeGraphId); // useMemo handles this
@@ -716,7 +716,7 @@ export function useGraphData() {
       };
       setDocData(nextDoc);
       setNodeToGraphMap(determineNodeGraphs(nextDoc.nodes));
-      supabase.from('graph_documents').update({ data: nextDoc }).eq('id', 'main').then(({ error }) => {
+      supabase.from('graph_documents').update({ document: nextDoc }).eq('id', 'main').then(({ error }) => {
         if (error) console.error("Error in midnight update:", error);
       });
     }
