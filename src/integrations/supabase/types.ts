@@ -107,6 +107,128 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_drafts: {
+        Row: {
+          draft_text: string
+          thread_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          draft_text?: string
+          thread_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          draft_text?: string
+          thread_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_drafts_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: true
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          parent_id: string | null
+          role: string
+          thread_id: string
+          thinking: string | null
+          tool_calls: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          parent_id?: string | null
+          role: string
+          thread_id: string
+          thinking?: string | null
+          tool_calls?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          parent_id?: string | null
+          role?: string
+          thread_id?: string
+          thinking?: string | null
+          tool_calls?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_threads: {
+        Row: {
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      layout_borders: {
+        Row: {
+          axis: string
+          border_id: string
+          position: number
+          updated_at: string | null
+        }
+        Insert: {
+          axis: string
+          border_id: string
+          position: number
+          updated_at?: string | null
+        }
+        Update: {
+          axis?: string
+          border_id?: string
+          position?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       nodes: {
         Row: {
           created_at: string | null

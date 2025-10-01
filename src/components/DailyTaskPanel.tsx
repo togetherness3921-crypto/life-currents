@@ -1,6 +1,4 @@
 import { useMemo } from 'react';
-import { cn } from '@/lib/utils';
-import { Button } from './ui/button';
 
 type TaskPanelProps = {
     nodesById: Record<string, any>;
@@ -41,7 +39,10 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                                     className="h-4 w-4"
                                     onChange={() => onToggleComplete(t.id)}
                                 />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline text-[0.6rem] leading-tight"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>
@@ -56,7 +57,10 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                         {completedToday.map((t) => (
                             <li key={t.id} className="flex items-center gap-2 opacity-80">
                                 <input type="checkbox" className="h-4 w-4" checked readOnly />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline text-[0.6rem] leading-tight"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>
