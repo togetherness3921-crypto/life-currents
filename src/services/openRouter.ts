@@ -52,6 +52,8 @@ export interface ModelInfo {
     description?: string;
 }
 
+export type ToolIntent = 'TOOL' | 'CONVERSATION';
+
 export const getAvailableModels = async (): Promise<ModelInfo[]> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -80,6 +82,62 @@ export const getAvailableModels = async (): Promise<ModelInfo[]> => {
         name: model?.name ?? model?.id,
         description: model?.description,
     })).filter((model) => typeof model.id === 'string' && model.id.length > 0);
+};
+
+const TOOL_INTENT_MODEL = 'google/gemini-2.5-pro-flash';
+const TOOL_INTENT_SYSTEM_PROMPT =
+    'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.';
+
+export const getToolIntent = async (userQuery: string): Promise<ToolIntent> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: TOOL_INTENT_MODEL,
+            messages: [
+                { role: 'system', content: TOOL_INTENT_SYSTEM_PROMPT },
+                { role: 'user', content: userQuery },
+            ],
+            stream: false,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Intent classification failed: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const messageContent = data?.choices?.[0]?.message?.content;
+
+    let normalized = '';
+    if (typeof messageContent === 'string') {
+        normalized = messageContent;
+    } else if (Array.isArray(messageContent)) {
+        normalized = messageContent
+            .map((segment: unknown) => {
+                if (typeof segment === 'string') return segment;
+                if (segment && typeof segment === 'object' && 'text' in segment) {
+                    const textValue = (segment as { text?: unknown }).text;
+                    return typeof textValue === 'string' ? textValue : '';
+                }
+                return '';
+            })
+            .join(' ');
+    }
+
+    const upper = normalized.trim().toUpperCase();
+    if (upper === 'CONVERSATION') {
+        return 'CONVERSATION';
+    }
+    return 'TOOL';
 };
 
 export const getGeminiResponse = async (
