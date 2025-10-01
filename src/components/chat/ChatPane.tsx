@@ -1,17 +1,24 @@
 import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
-import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
-import { Input } from '../ui/input';
+import {
+    getGeminiResponse,
+    getTitleSuggestion,
+    getToolIntent,
+    type ApiToolDefinition,
+    type ApiToolCall,
+    type ApiMessage,
+} from '@/services/openRouter';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
+import { Send, Square, PlusCircle, Cog } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import SettingsDialog from './SettingsDialog';
 import { useMcp } from '@/hooks/useMcp';
 import useModelSelection from '@/hooks/useModelSelection';
-import ModelSelectionDialog from './ModelSelectionDialog';
 import { useConversationContext } from '@/hooks/useConversationContext';
+import { Textarea } from '../ui/textarea';
+import { cn } from '@/lib/utils';
 
 const ChatPane = () => {
     const {
@@ -32,13 +39,14 @@ const ChatPane = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-    const [isInstructionDialogOpen, setInstructionDialogOpen] = useState(false);
-    const [isModelDialogOpen, setModelDialogOpen] = useState(false);
+    const [isSettingsDialogOpen, setSettingsDialogOpen] = useState(false);
+    const [isComposerExpanded, setComposerExpanded] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const { activeInstruction } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
-    const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
+    const { selectedModel, recordModelUsage, isToolIntentCheckEnabled } = useModelSelection();
     const { applyContextToMessages, transforms } = useConversationContext();
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
@@ -68,7 +76,6 @@ const ChatPane = () => {
         setIsLoading(true);
         console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId });
 
-        // Build payload for API using existing conversation + new user input
         const historyChain = parentId ? applyContextToMessages(getMessageChain(parentId)) : [];
         const systemPrompt = activeInstruction?.content;
         const apiMessages = [
@@ -84,25 +91,44 @@ const ChatPane = () => {
                 parameters: tool.inputSchema,
             },
         }));
+
+        let toolsForRequest: ApiToolDefinition[] | undefined = toolDefinitions.length > 0 ? toolDefinitions : undefined;
+        if (toolsForRequest && isToolIntentCheckEnabled(selectedModel.id)) {
+            try {
+                const intent = await getToolIntent(content);
+                console.log('[ChatPane] Tool intent classification:', intent);
+                if (intent === 'CONVERSATION') {
+                    toolsForRequest = undefined;
+                }
+            } catch (intentError) {
+                console.warn('[ChatPane] Tool intent classification failed, defaulting to tools', intentError);
+            }
+        }
+
         console.log('[ChatPane] Sending payload to API:', apiMessages);
         console.log('[ChatPane][MCP] Available tools:', availableTools);
+        console.log('[ChatPane] Tools provided to main request:', toolsForRequest);
 
-        // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
         clearDraft(threadId);
         setInput('');
 
-        // Add a blank assistant message to begin streaming
-        const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id, toolCalls: [] });
+        const assistantMessage = addMessage(threadId, {
+            role: 'assistant',
+            content: '',
+            parentId: userMessage.id,
+            toolCalls: [],
+        });
         setStreamingMessageId(assistantMessage.id);
 
-        try {
-            const controller = new AbortController();
-            abortControllerRef.current = controller;
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
+        let titleSuggestionMessages: ApiMessage[] | null = null;
+
+        try {
             const { raw } = await getGeminiResponse(apiMessages, {
                 onStream: (update) => {
-                    console.log('[ChatPane][Streaming update]', update);
                     if (update.content !== undefined) {
                         updateMessage(assistantMessage.id, { content: update.content });
                     }
@@ -110,7 +136,6 @@ const ChatPane = () => {
                         updateMessage(assistantMessage.id, { thinking: update.reasoning });
                     }
                     if (update.toolCall) {
-                        console.log('[ChatPane][Tool update detected]', update.toolCall);
                         updateMessage(assistantMessage.id, (current) => {
                             const toolCalls = [...(current.toolCalls || [])];
                             const existingIndex = toolCalls.findIndex((call) => call.id === update.toolCall!.id);
@@ -134,21 +159,18 @@ const ChatPane = () => {
                     }
                 },
                 signal: controller.signal,
-                tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                tools: toolsForRequest,
                 model: selectedModel.id,
                 transforms: transforms.length > 0 ? transforms : undefined,
             });
 
-            console.log('[ChatPane][Raw Gemini response]', raw);
             const toolCallRequests = raw?.choices?.[0]?.message?.tool_calls;
-            if (toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
+            if (toolsForRequest && toolCallRequests && Array.isArray(toolCallRequests) && toolCallRequests.length > 0) {
                 console.log('[ChatPane][MCP] Processing', toolCallRequests.length, 'tool calls');
 
-                // Collect all tool call messages and tool result messages
                 const allToolCallMessages: ApiToolCall[] = [];
                 const allToolResultMessages: Array<{ role: 'tool'; tool_call_id: string; content: string }> = [];
 
-                // Execute all tool calls
                 for (const toolCallRequest of toolCallRequests) {
                     const toolId = toolCallRequest.id;
                     const toolName = toolCallRequest.function?.name;
@@ -185,9 +207,7 @@ const ChatPane = () => {
                             throw new Error('Tool call did not include a tool name.');
                         }
 
-                        console.log('[ChatPane][MCP] Calling tool', toolName, 'with args', toolArgs);
                         const toolResult = await callTool(toolName, toolArgs);
-                        console.log('[ChatPane][MCP] Tool result', toolResult);
                         const toolContent = typeof toolResult?.content === 'string'
                             ? toolResult.content
                             : JSON.stringify(toolResult?.content ?? '', null, 2);
@@ -205,7 +225,6 @@ const ChatPane = () => {
                             return { toolCalls };
                         });
 
-                        // Collect tool call message for this tool
                         allToolCallMessages.push({
                             id: toolId,
                             type: 'function',
@@ -215,7 +234,6 @@ const ChatPane = () => {
                             },
                         });
 
-                        // Collect tool result message for this tool
                         allToolResultMessages.push({
                             role: 'tool' as const,
                             tool_call_id: toolId,
@@ -236,7 +254,6 @@ const ChatPane = () => {
                             return { toolCalls };
                         });
 
-                        // Still add the error as a tool result
                         allToolCallMessages.push({
                             id: toolId,
                             type: 'function',
@@ -253,10 +270,7 @@ const ChatPane = () => {
                     }
                 }
 
-                // Now send ONE follow-up request with ALL tool calls and results
                 if (allToolCallMessages.length > 0) {
-                    console.log('[ChatPane][Follow-up] Sending follow-up request with', allToolCallMessages.length, 'tool results');
-
                     const followUpMessages = [
                         ...apiMessages,
                         {
@@ -267,12 +281,9 @@ const ChatPane = () => {
                         ...allToolResultMessages,
                     ];
 
-                    console.log('[ChatPane][Follow-up] Messages payload:', JSON.stringify(followUpMessages, null, 2));
-
                     try {
-                        const followUpResult = await getGeminiResponse(followUpMessages, {
+                        await getGeminiResponse(followUpMessages, {
                             onStream: (update) => {
-                                console.log('[ChatPane][Follow-up streaming update]', update);
                                 if (update.content !== undefined) {
                                     updateMessage(assistantMessage.id, { content: update.content });
                                 }
@@ -281,11 +292,10 @@ const ChatPane = () => {
                                 }
                             },
                             signal: controller.signal,
-                            tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+                            tools: toolsForRequest,
                             model: selectedModel.id,
                             transforms: transforms.length > 0 ? transforms : undefined,
                         });
-                        console.log('[ChatPane][Follow-up] Follow-up request completed', followUpResult);
                     } catch (followUpError) {
                         console.error('[ChatPane][Follow-up] Follow-up request failed:', followUpError);
                         const errorMessage = `Follow-up request failed: ${followUpError instanceof Error ? followUpError.message : 'Unknown error'}`;
@@ -294,24 +304,18 @@ const ChatPane = () => {
                 }
             }
 
-            // After the first response, fetch an automatic title suggestion
-            if (activeThread?.rootChildren && activeThread.rootChildren.length <= 1 && activeThread.title === 'New Chat') {
-                try {
-                    const actingMessages = [
-                        ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-                        ...historyChain.map(({ role, content }) => ({ role, content })),
-                        { role: 'user' as const, content },
-                        { role: 'assistant' as const, content: (allMessages[assistantMessage.id]?.content ?? '') },
-                    ];
-                    const title = await getTitleSuggestion(actingMessages);
-                    if (title) {
-                        updateThreadTitle(activeThreadId!, title);
-                    }
-                } catch (err) {
-                    console.warn('Failed to fetch title suggestion:', err);
-                }
+            if (
+                activeThread?.rootChildren &&
+                activeThread.rootChildren.length <= 1 &&
+                activeThread.title === 'New Chat'
+            ) {
+                titleSuggestionMessages = [
+                    ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+                    ...historyChain.map(({ role, content: historyContent }) => ({ role, content: historyContent })),
+                    { role: 'user' as const, content },
+                    { role: 'assistant' as const, content: allMessages[assistantMessage.id]?.content ?? '' },
+                ];
             }
-
         } catch (error) {
             const errorMessage = `Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`;
             updateMessage(assistantMessage.id, { content: errorMessage });
@@ -320,25 +324,52 @@ const ChatPane = () => {
             setStreamingMessageId(null);
             abortControllerRef.current = null;
         }
+
+        if (titleSuggestionMessages && activeThreadId) {
+            void (async () => {
+                try {
+                    const title = await getTitleSuggestion(titleSuggestionMessages!);
+                    if (title) {
+                        updateThreadTitle(activeThreadId, title);
+                    }
+                } catch (err) {
+                    console.warn('Failed to fetch title suggestion:', err);
+                }
+            })();
+        }
     };
 
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
+    const sendCurrentMessage = async () => {
         if (!input.trim() || isLoading) return;
 
         let currentThreadId = activeThreadId;
         if (!currentThreadId) {
             currentThreadId = createThread();
         }
+        if (!currentThreadId) return;
 
         const userInput = input;
         setInput('');
+        setComposerExpanded(false);
+        textareaRef.current?.blur();
 
         const currentChain = getMessageChain(activeThread?.leafMessageId || null);
         const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
 
         recordModelUsage(selectedModel.id);
         await submitMessage(userInput, currentThreadId, parentId);
+    };
+
+    const handleSubmit = async (event: FormEvent) => {
+        event.preventDefault();
+        await sendCurrentMessage();
+    };
+
+    const handleTextareaKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            await sendCurrentMessage();
+        }
     };
 
     const handleFork = async (originalMessageId: string, newContent: string) => {
@@ -398,6 +429,10 @@ const ChatPane = () => {
         }
     };
 
+    const COLLAPSED_COMPOSER_HEIGHT = 112;
+    const composerHeight = isComposerExpanded ? '50%' : `${COLLAPSED_COMPOSER_HEIGHT}px`;
+    const scrollPaddingBottom = isComposerExpanded ? 'calc(50% + 24px)' : `${COLLAPSED_COMPOSER_HEIGHT + 24}px`;
+
     if (!activeThread) {
         return (
             <div className="flex h-full w-full flex-col items-center justify-center bg-background">
@@ -410,52 +445,76 @@ const ChatPane = () => {
     }
 
     return (
-        <div className="flex h-full flex-col bg-background">
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-                <div className="flex flex-col gap-4">
-                    {messages.map((msg) => {
-                        let branchInfo;
-                        if (msg.parentId) {
-                            const parentMessage = allMessages[msg.parentId];
-                            if (parentMessage && parentMessage.children.length > 1) {
-                                const siblings = parentMessage.children;
+        <div className="relative flex h-full flex-col bg-background">
+            <div className="relative flex-1 overflow-hidden">
+                <ScrollArea
+                    className="h-full p-4"
+                    ref={scrollAreaRef}
+                    style={{ paddingBottom: scrollPaddingBottom }}
+                >
+                    <div className="flex flex-col gap-4">
+                        {messages.map((msg) => {
+                            let branchInfo;
+                            if (msg.parentId) {
+                                const parentMessage = allMessages[msg.parentId];
+                                if (parentMessage && parentMessage.children.length > 1) {
+                                    const siblings = parentMessage.children;
+                                    const index = siblings.indexOf(msg.id);
+                                    branchInfo = {
+                                        index: index >= 0 ? index : 0,
+                                        total: siblings.length,
+                                        onPrev: () => handleNavigateBranch(msg.parentId!, 'prev'),
+                                        onNext: () => handleNavigateBranch(msg.parentId!, 'next'),
+                                    };
+                                }
+                            } else if (activeThread?.rootChildren && activeThread.rootChildren.length > 1) {
+                                const siblings = activeThread.rootChildren;
                                 const index = siblings.indexOf(msg.id);
                                 branchInfo = {
                                     index: index >= 0 ? index : 0,
                                     total: siblings.length,
-                                    onPrev: () => handleNavigateBranch(msg.parentId!, 'prev'),
-                                    onNext: () => handleNavigateBranch(msg.parentId!, 'next'),
+                                    onPrev: () => handleNavigateBranch(null, 'prev'),
+                                    onNext: () => handleNavigateBranch(null, 'next'),
                                 };
                             }
-                        } else if (activeThread?.rootChildren && activeThread.rootChildren.length > 1) {
-                            const siblings = activeThread.rootChildren;
-                            const index = siblings.indexOf(msg.id);
-                            branchInfo = {
-                                index: index >= 0 ? index : 0,
-                                total: siblings.length,
-                                onPrev: () => handleNavigateBranch(null, 'prev'),
-                                onNext: () => handleNavigateBranch(null, 'next'),
-                            };
-                        }
 
-                        return (
-                            <ChatMessage
-                                key={msg.id}
-                                message={msg}
-                                onSave={handleFork}
-                                isStreaming={msg.id === streamingMessageId}
-                                branchInfo={branchInfo}
-                            />
-                        );
-                    })}
-                </div>
-            </ScrollArea>
-            <div className="border-t p-4">
-                <form onSubmit={handleSubmit} className="flex items-center gap-2">
-                    <Input
+                            return (
+                                <ChatMessage
+                                    key={msg.id}
+                                    message={msg}
+                                    onSave={handleFork}
+                                    isStreaming={msg.id === streamingMessageId}
+                                    branchInfo={branchInfo}
+                                />
+                            );
+                        })}
+                    </div>
+                </ScrollArea>
+            </div>
+            <div
+                className={cn(
+                    'absolute bottom-0 left-0 right-0 z-10 border-t bg-background/95 backdrop-blur transition-all duration-300 ease-in-out',
+                    isComposerExpanded ? 'shadow-lg' : 'shadow-sm'
+                )}
+                style={{ height: composerHeight }}
+            >
+                <form
+                    onSubmit={handleSubmit}
+                    onFocusCapture={() => setComposerExpanded(true)}
+                    onBlurCapture={(event) => {
+                        const nextFocus = event.relatedTarget as Node | null;
+                        if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
+                            setComposerExpanded(false);
+                        }
+                    }}
+                    aria-expanded={isComposerExpanded}
+                    className="flex h-full flex-col gap-3 p-4"
+                >
+                    <Textarea
+                        ref={textareaRef}
                         value={input}
-                        onChange={(e) => {
-                            const value = e.target.value;
+                        onChange={(event) => {
+                            const value = event.target.value;
                             let threadId = activeThreadId;
                             if (!threadId) {
                                 threadId = createThread();
@@ -465,59 +524,36 @@ const ChatPane = () => {
                                 updateDraft(threadId, value);
                             }
                         }}
+                        onKeyDown={handleTextareaKeyDown}
                         placeholder="Ask anything..."
                         disabled={isLoading}
-                        className="flex-1"
+                        className="flex-1 resize-none"
                     />
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex items-center justify-between gap-2">
                         <Button
                             type="button"
                             variant="secondary"
-                            onClick={() => setModelDialogOpen(true)}
-                            className="h-10 w-10 p-0 bg-muted text-black hover:bg-muted/80"
-                            title={`Select model (current: ${selectedModel.label ?? selectedModel.id})`}
+                            onClick={() => setSettingsDialogOpen(true)}
+                            className="h-10 w-10 p-0"
+                            title="Open chat settings"
                         >
-                            <Sparkles className="h-4 w-4" />
+                            <Cog className="h-4 w-4" />
                         </Button>
-                        <div className="flex min-w-0 flex-col text-left leading-tight">
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Model</span>
-                            <span
-                                className="truncate text-xs text-foreground"
-                                title={selectedModel.label ?? selectedModel.id}
-                            >
-                                {selectedModel.label ?? selectedModel.id}
-                            </span>
+                        <div className="flex items-center gap-2">
+                            {isLoading ? (
+                                <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
+                                    <Square className="h-4 w-4" />
+                                </Button>
+                            ) : (
+                                <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
+                                    <Send className="h-4 w-4" />
+                                </Button>
+                            )}
                         </div>
                     </div>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setInstructionDialogOpen(true)}
-                        className="h-10 w-10 p-0"
-                        title="Manage system instructions"
-                    >
-                        <Cog className="h-4 w-4" />
-                    </Button>
-                    {isLoading ? (
-                        <Button type="button" onClick={handleCancel} variant="destructive" className="h-10 w-10 p-0">
-                            <Square className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button type="submit" disabled={!input.trim()} className="h-10 w-10 p-0">
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    )}
                 </form>
             </div>
-            <SettingsDialog open={isInstructionDialogOpen} onOpenChange={setInstructionDialogOpen} />
-            <ModelSelectionDialog
-                open={isModelDialogOpen}
-                onOpenChange={setModelDialogOpen}
-                onSelectModel={(model) => {
-                    setSelectedModel(model);
-                    setModelDialogOpen(false);
-                }}
-            />
+            <SettingsDialog open={isSettingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
         </div>
     );
 };

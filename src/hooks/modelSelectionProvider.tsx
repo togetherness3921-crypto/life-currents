@@ -5,6 +5,7 @@ import { ModelSelectionContext, SelectedModel } from './modelSelectionProviderCo
 // timestamps in localStorage and prune entries beyond 72h when accessed.
 
 const STORAGE_KEY = 'model_usage_history_v1';
+const TOOL_INTENT_PREFIX = 'tool_intent_check_';
 export const SEED_MODELS: SelectedModel[] = [
     { id: 'openai/gpt-5', label: 'OpenAI GPT-5' },
     { id: 'google/gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
@@ -49,9 +50,41 @@ const pruneHistory = (history: UsageHistoryEntry[]): UsageHistoryEntry[] => {
     return history.filter((entry) => entry.timestamp >= cutoff);
 };
 
+const readToolIntentPreference = (modelId: string): boolean => {
+    if (typeof window === 'undefined') {
+        return modelId.toLowerCase().includes('gemini');
+    }
+    try {
+        const stored = window.localStorage.getItem(`${TOOL_INTENT_PREFIX}${modelId}`);
+        if (stored === null) {
+            return modelId.toLowerCase().includes('gemini');
+        }
+        return stored === 'true';
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to read tool intent preference', error);
+        return modelId.toLowerCase().includes('gemini');
+    }
+};
+
+const writeToolIntentPreference = (modelId: string, enabled: boolean) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(`${TOOL_INTENT_PREFIX}${modelId}`, enabled ? 'true' : 'false');
+    } catch (error) {
+        console.warn('[ModelSelection] Failed to write tool intent preference', error);
+    }
+};
+
 export const ModelSelectionProvider = ({ children }: { children: ReactNode }) => {
     const [selectedModel, setSelectedModelState] = useState<SelectedModel>(() => SEED_MODELS[1]);
     const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>(() => pruneHistory(readUsageHistory()));
+    const [toolIntentOverrides, setToolIntentOverrides] = useState<Record<string, boolean>>(() => {
+        const initial: Record<string, boolean> = {};
+        for (const seed of SEED_MODELS) {
+            initial[seed.id] = readToolIntentPreference(seed.id);
+        }
+        return initial;
+    });
 
     useEffect(() => {
         writeUsageHistory(usageHistory);
@@ -80,6 +113,22 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
         setUsageHistory((prev) => pruneHistory([...prev, { modelId, timestamp: Date.now() }]));
     }, []);
 
+    const isToolIntentCheckEnabled = useCallback(
+        (modelId: string) => {
+            const override = toolIntentOverrides[modelId];
+            if (typeof override === 'boolean') {
+                return override;
+            }
+            return readToolIntentPreference(modelId);
+        },
+        [toolIntentOverrides]
+    );
+
+    const setToolIntentCheckEnabled = useCallback((modelId: string, enabled: boolean) => {
+        setToolIntentOverrides((prev) => ({ ...prev, [modelId]: enabled }));
+        writeToolIntentPreference(modelId, enabled);
+    }, []);
+
     const contextValue = useMemo(
         () => ({
             selectedModel,
@@ -88,8 +137,19 @@ export const ModelSelectionProvider = ({ children }: { children: ReactNode }) =>
             getUsageCount,
             getUsageScore,
             usageCounts,
+            isToolIntentCheckEnabled,
+            setToolIntentCheckEnabled,
         }),
-        [getUsageCount, getUsageScore, selectedModel, setSelectedModel, recordModelUsage, usageCounts]
+        [
+            getUsageCount,
+            getUsageScore,
+            selectedModel,
+            setSelectedModel,
+            recordModelUsage,
+            usageCounts,
+            isToolIntentCheckEnabled,
+            setToolIntentCheckEnabled,
+        ]
     );
 
     return (
