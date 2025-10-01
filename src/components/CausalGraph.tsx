@@ -27,6 +27,7 @@ import { useTodayTime } from '@/hooks/useTodayTime';
 import ProgressGraphPanel from './ProgressGraphPanel';
 import StatsPanel from './StatsPanel';
 import ChatLayout from './chat/ChatLayout';
+import { toast } from '@/hooks/use-toast';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -44,6 +45,7 @@ export default function CausalGraph() {
     activeGraphId,
     viewportState,
     docData,
+    layoutConfig,
     layoutReady,
     measuredNodes,
     nodeToGraphMap,
@@ -55,7 +57,8 @@ export default function CausalGraph() {
     deleteNode,
     addRelationship,
     calculateAutoLayout,
-    handleNodeMeasure
+    handleNodeMeasure,
+    updatePanelLayout,
   } = useGraphData();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -66,24 +69,79 @@ export default function CausalGraph() {
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
   const { now, dayKey, startOfDay, endOfDay } = useTodayTime(60000);
+  const pendingZoomNodeIdRef = useRef<string | null>(null);
+  const pendingZoomStartedAtRef = useRef<number | null>(null);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persist panel sizes in localStorage
-  const PANEL_SIZES_KEY = 'panel_sizes_v1';
-  const [panelSizes, setPanelSizes] = useState<number[]>(() => {
-    try {
-      const raw = localStorage.getItem(PANEL_SIZES_KEY);
-      if (!raw) return [70, 15, 15];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === 3) return parsed;
-      return [70, 15, 15];
-    } catch {
-      return [70, 15, 15];
+  const [mainColumnLayout, setMainColumnLayout] = useState<number[]>(() => [...layoutConfig.mainColumns]);
+  const [verticalLayout, setVerticalLayout] = useState<number[]>(() => [...layoutConfig.verticalSections]);
+  const [progressLayout, setProgressLayout] = useState<number[]>(() => [...layoutConfig.progressColumns]);
+
+  const mainLayoutRef = useRef(mainColumnLayout);
+  const verticalLayoutRef = useRef(verticalLayout);
+  const progressLayoutRef = useRef(progressLayout);
+
+  useEffect(() => {
+    mainLayoutRef.current = mainColumnLayout;
+  }, [mainColumnLayout]);
+
+  useEffect(() => {
+    verticalLayoutRef.current = verticalLayout;
+  }, [verticalLayout]);
+
+  useEffect(() => {
+    progressLayoutRef.current = progressLayout;
+  }, [progressLayout]);
+
+  useEffect(() => {
+    const { mainColumns, verticalSections, progressColumns } = layoutConfig;
+
+    if (Array.isArray(mainColumns) && mainColumns.length === 3) {
+      const normalized = mainColumns.map((value) => Number(value));
+      if (JSON.stringify(normalized) !== JSON.stringify(mainLayoutRef.current)) {
+        setMainColumnLayout(normalized);
+      }
     }
-  });
-  const onLayout = useCallback((sizes: number[]) => {
-    setPanelSizes(sizes);
-    try { localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(sizes)); } catch { }
-  }, []);
+
+    if (Array.isArray(verticalSections) && verticalSections.length === 3) {
+      const normalized = verticalSections.map((value) => Number(value));
+      if (JSON.stringify(normalized) !== JSON.stringify(verticalLayoutRef.current)) {
+        setVerticalLayout(normalized);
+      }
+    }
+
+    if (Array.isArray(progressColumns) && progressColumns.length === 2) {
+      const normalized = progressColumns.map((value) => Number(value));
+      if (JSON.stringify(normalized) !== JSON.stringify(progressLayoutRef.current)) {
+        setProgressLayout(normalized);
+      }
+    }
+  }, [layoutConfig]);
+
+  const handleMainLayout = useCallback((sizes: number[]) => {
+    if (!Array.isArray(sizes) || sizes.length !== 3) return;
+    const normalized = sizes.map((value) => Number(value));
+    if (JSON.stringify(normalized) === JSON.stringify(mainLayoutRef.current)) return;
+    setMainColumnLayout(normalized);
+    updatePanelLayout('mainColumns', normalized);
+  }, [updatePanelLayout]);
+
+  const handleVerticalLayout = useCallback((sizes: number[]) => {
+    if (!Array.isArray(sizes) || sizes.length !== 3) return;
+    const normalized = sizes.map((value) => Number(value));
+    if (JSON.stringify(normalized) === JSON.stringify(verticalLayoutRef.current)) return;
+    setVerticalLayout(normalized);
+    updatePanelLayout('verticalSections', normalized);
+  }, [updatePanelLayout]);
+
+  const handleProgressLayout = useCallback((sizes: number[]) => {
+    if (!Array.isArray(sizes) || sizes.length !== 2) return;
+    const normalized = sizes.map((value) => Number(value));
+    if (JSON.stringify(normalized) === JSON.stringify(progressLayoutRef.current)) return;
+    setProgressLayout(normalized);
+    updatePanelLayout('progressColumns', normalized);
+  }, [updatePanelLayout]);
 
   const logViewport = useCallback((label: string) => {
     const inst = reactFlowInstance.current as any;
@@ -148,6 +206,60 @@ export default function CausalGraph() {
     setNodes(graphNodes);
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const pendingId = pendingZoomNodeIdRef.current;
+    if (!pendingId) return;
+
+    const nodeRecord = (docData as any)?.nodes?.[pendingId];
+    if (!nodeRecord) {
+      pendingZoomNodeIdRef.current = null;
+      pendingZoomStartedAtRef.current = null;
+      toast({
+        title: 'Node not found',
+        description: 'The selected item could not be located in the current objective graph.',
+      });
+      return;
+    }
+
+    const targetGraph = nodeRecord.graph || 'main';
+    if (targetGraph !== activeGraphId) {
+      const startedAt = pendingZoomStartedAtRef.current;
+      if (startedAt && Date.now() - startedAt > 1500) {
+        toast({
+          title: 'Unable to focus node',
+          description: 'The selected item is not available in the current graph view.',
+        });
+        pendingZoomNodeIdRef.current = null;
+        pendingZoomStartedAtRef.current = null;
+      }
+      return;
+    }
+
+    const success = performZoomToNode(pendingId);
+    if (success) {
+      pendingZoomNodeIdRef.current = null;
+      pendingZoomStartedAtRef.current = null;
+    } else {
+      const startedAt = pendingZoomStartedAtRef.current;
+      if (startedAt && Date.now() - startedAt > 1500) {
+        toast({
+          title: 'Unable to focus node',
+          description: 'The selected item is not visible in the current graph layout.',
+        });
+        pendingZoomNodeIdRef.current = null;
+        pendingZoomStartedAtRef.current = null;
+      }
+    }
+  }, [nodes, activeGraphId, docData?.nodes, performZoomToNode]);
 
   const containerIds = useMemo(() => new Set<string>(Object.values(nodeToGraphMap || {})), [nodeToGraphMap]);
 
@@ -264,6 +376,7 @@ export default function CausalGraph() {
   const allDocNodes = (docData?.nodes || {}) as Record<string, any>;
   const nodesWithActions = nodes.map((node) => {
     let subObjectives: Array<{ id: string; label: string; status?: string }> | undefined = undefined;
+    const isHighlighted = highlightedNodeId === node.id;
     const subs = Object.entries(allDocNodes)
       .filter(([id]) => (nodeToGraphMap || {})[id] === node.id)
       .map(([id, n]) => ({ id, label: (n as any)?.label || id, status: (n as any)?.status || 'not-started' }));
@@ -273,6 +386,7 @@ export default function CausalGraph() {
       data: {
         ...node.data,
         subObjectives,
+        highlighted: isHighlighted,
         onDelete: () => deleteNode(node.id),
         onComplete: () => onNodeComplete(node.id),
         onMeasure: (width: number, height: number) => handleNodeMeasure(node.id, width, height),
@@ -283,13 +397,53 @@ export default function CausalGraph() {
   // Task panel actions
   const nodesById = useMemo(() => (docData?.nodes || {}) as Record<string, any>, [docData?.nodes]);
   const onToggleComplete = useCallback((id: string) => setNodeStatus(id, 'completed'), [setNodeStatus]);
-  const onZoomToNode = useCallback((id: string) => {
-    if (!reactFlowInstance.current) return;
-    const node = reactFlowInstance.current.getNode(id);
-    if (node) {
-      reactFlowInstance.current.fitView({ nodes: [node], duration: 800, padding: 0.3 });
+  const performZoomToNode = useCallback((id: string) => {
+    if (!reactFlowInstance.current) return false;
+    const instance = reactFlowInstance.current;
+    const node = instance.getNode(id);
+    if (!node) return false;
+
+    instance.fitView({ nodes: [node], duration: 800, padding: 0.35 });
+
+    setHighlightedNodeId(id);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
     }
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedNodeId(null);
+      highlightTimeoutRef.current = null;
+    }, 4000);
+
+    return true;
   }, []);
+
+  const onZoomToNode = useCallback((id: string) => {
+    pendingZoomNodeIdRef.current = id;
+    pendingZoomStartedAtRef.current = Date.now();
+
+    const nodeRecord = (docData as any)?.nodes?.[id];
+    if (!nodeRecord) {
+      pendingZoomNodeIdRef.current = null;
+      pendingZoomStartedAtRef.current = null;
+      toast({
+        title: 'Node not found',
+        description: 'The selected item could not be located in the current objective graph.',
+      });
+      return;
+    }
+
+    const targetGraph = nodeRecord.graph || 'main';
+    if (targetGraph !== activeGraphId) {
+      setActiveGraphId(targetGraph);
+      return;
+    }
+
+    const success = performZoomToNode(id);
+    if (success) {
+      pendingZoomNodeIdRef.current = null;
+      pendingZoomStartedAtRef.current = null;
+    }
+  }, [docData?.nodes, activeGraphId, setActiveGraphId, performZoomToNode]);
 
   if (loading) {
     return (
@@ -304,16 +458,21 @@ export default function CausalGraph() {
 
   return (
     <div className="w-full h-[100dvh] bg-graph-background">
-      {/* Manual commit timestamp badge (manually updated by AI per commit) */}
-      <div className="absolute top-2 left-2 z-[9999] text-[10px] leading-none px-2 py-1 rounded bg-black/60 text-white border border-white/10">
-        Commit: 2025-09-17T02:45:00Z
-      </div>
-
-      <ResizablePanelGroup direction="vertical" className="h-full w-full">
-        <ResizablePanel defaultSize={65}>
-          <ResizablePanelGroup direction="horizontal" onLayout={onLayout} className="h-full">
+      <ResizablePanelGroup
+        direction="vertical"
+        className="h-full w-full"
+        layout={verticalLayout}
+        onLayout={handleVerticalLayout}
+      >
+        <ResizablePanel defaultSize={verticalLayout[0]}>
+          <ResizablePanelGroup
+            direction="horizontal"
+            onLayout={handleMainLayout}
+            className="h-full"
+            layout={mainColumnLayout}
+          >
             {/* Left: Main graph */}
-            <ResizablePanel defaultSize={panelSizes[0]} minSize={40} className="relative">
+            <ResizablePanel defaultSize={mainColumnLayout[0]} minSize={40} className="relative">
               <ReactFlow
                 nodes={nodesWithActions}
                 edges={edges}
@@ -343,7 +502,8 @@ export default function CausalGraph() {
                 }}
               >
                 <Controls
-                  className="bg-card border-border text-foreground p-1 [&>button]:w-6 [&>button]:h-6"
+                  className="bg-card border border-border text-foreground p-1 [&>button]:w-10 [&>button]:h-10 origin-bottom-left scale-50 transform"
+                  style={{ bottom: 8, left: 8 }}
                   showZoom={false}
                   showFitView={true}
                   showInteractive={false}
@@ -363,7 +523,7 @@ export default function CausalGraph() {
                     className="bg-background border-border"
                     disabled={activeGraphId === 'main'}
                   >
-                    <ArrowLeft className="w-3 h-3" />
+                    <ArrowLeft className="w-5 h-5" />
                   </Button>
                   <Button
                     onClick={() => {
@@ -380,7 +540,7 @@ export default function CausalGraph() {
                     size="icon"
                     className="bg-background border-border"
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className="w-5 h-5" />
                   </Button>
                 </Controls>
                 <Background
@@ -394,7 +554,7 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Middle: Daily task checklist */}
-            <ResizablePanel defaultSize={panelSizes[1]} minSize={10} className="relative">
+            <ResizablePanel defaultSize={mainColumnLayout[1]} minSize={10} className="relative">
               <DailyTaskPanel
                 nodesById={nodesById}
                 onToggleComplete={onToggleComplete}
@@ -406,25 +566,36 @@ export default function CausalGraph() {
             <ResizableHandle withHandle />
 
             {/* Right: Daily calendar view */}
-            <ResizablePanel defaultSize={panelSizes[2]} minSize={10} className="relative">
-              <DailyCalendarPanel nodesById={nodesById} startOfDay={startOfDay} endOfDay={endOfDay} now={now} />
+            <ResizablePanel defaultSize={mainColumnLayout[2]} minSize={10} className="relative">
+              <DailyCalendarPanel
+                nodesById={nodesById}
+                startOfDay={startOfDay}
+                endOfDay={endOfDay}
+                now={now}
+                onZoomToNode={onZoomToNode}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={15} minSize={10}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={75} minSize={30}>
+        <ResizablePanel defaultSize={verticalLayout[1]} minSize={10}>
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full"
+            layout={progressLayout}
+            onLayout={handleProgressLayout}
+          >
+            <ResizablePanel defaultSize={progressLayout[0]} minSize={30}>
               <ProgressGraphPanel history={docData?.historical_progress} />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={25} minSize={20}>
+            <ResizablePanel defaultSize={progressLayout[1]} minSize={20}>
               <StatsPanel history={docData?.historical_progress} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={20} minSize={10}>
+        <ResizablePanel defaultSize={verticalLayout[2]} minSize={10}>
           <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -34,14 +34,17 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                 {inProgressToday.length > 0 && (
                     <ul className="space-y-2">
                         {inProgressToday.map((t) => (
-                            <li key={t.id} className="flex items-center gap-2">
+                            <li key={t.id} className="flex items-center gap-2 text-[0.6rem]">
                                 <input
                                     aria-label={`Complete ${t.label}`}
                                     type="checkbox"
                                     className="h-4 w-4"
                                     onChange={() => onToggleComplete(t.id)}
                                 />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>
@@ -54,9 +57,12 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                 {completedToday.length > 0 && (
                     <ul className="space-y-2">
                         {completedToday.map((t) => (
-                            <li key={t.id} className="flex items-center gap-2 opacity-80">
+                            <li key={t.id} className="flex items-center gap-2 opacity-80 text-[0.6rem]">
                                 <input type="checkbox" className="h-4 w-4" checked readOnly />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>

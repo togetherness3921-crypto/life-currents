@@ -23,7 +23,10 @@ const ChatPane = () => {
         updateMessage,
         selectBranch,
         updateThreadTitle,
-        messages: allMessages // get all messages for parent lookup
+        messages: allMessages, // get all messages for parent lookup
+        drafts,
+        updateDraft,
+        clearDraft,
     } = useChatContext();
 
     const [input, setInput] = useState('');
@@ -41,6 +44,15 @@ const ChatPane = () => {
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
     const messages = getMessageChain(selectedLeafId);
+
+    useEffect(() => {
+        if (!activeThreadId) {
+            setInput((prev) => (prev === '' ? prev : ''));
+            return;
+        }
+        const savedDraft = drafts[activeThreadId] ?? '';
+        setInput((prev) => (prev === savedDraft ? prev : savedDraft));
+    }, [activeThreadId, drafts]);
 
     useEffect(() => {
         // Scroll to bottom when new messages are added
@@ -320,6 +332,9 @@ const ChatPane = () => {
 
         const userInput = input;
         setInput('');
+        if (currentThreadId) {
+            clearDraft(currentThreadId);
+        }
 
         const currentChain = getMessageChain(activeThread?.leafMessageId || null);
         const parentId = currentChain.length > 0 ? currentChain[currentChain.length - 1].id : null;
@@ -441,7 +456,13 @@ const ChatPane = () => {
                 <form onSubmit={handleSubmit} className="flex items-center gap-2">
                     <Input
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            const nextValue = e.target.value;
+                            setInput(nextValue);
+                            if (activeThreadId) {
+                                updateDraft(activeThreadId, nextValue);
+                            }
+                        }}
                         placeholder="Ask anything..."
                         disabled={isLoading}
                         className="flex-1"
