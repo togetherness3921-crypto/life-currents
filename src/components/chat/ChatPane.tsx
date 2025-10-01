@@ -3,7 +3,7 @@ import ChatMessage from './ChatMessage';
 import { getGeminiResponse, getTitleSuggestion, type ApiToolDefinition, type ApiToolCall } from '@/services/openRouter';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { Send, Square, PlusCircle, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
+import { Send, Square, ChevronLeft, ChevronRight, Cog, Sparkles } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { useChatContext } from '@/hooks/useChat';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
@@ -15,6 +15,8 @@ import { useConversationContext } from '@/hooks/useConversationContext';
 
 const ChatPane = () => {
     const {
+        threads,
+        loading,
         activeThreadId,
         getThread,
         addMessage,
@@ -23,7 +25,9 @@ const ChatPane = () => {
         updateMessage,
         selectBranch,
         updateThreadTitle,
-        messages: allMessages // get all messages for parent lookup
+        messages: allMessages,
+        getDraft,
+        updateDraft,
     } = useChatContext();
 
     const [input, setInput] = useState('');
@@ -37,6 +41,30 @@ const ChatPane = () => {
     const { tools: availableTools, callTool } = useMcp();
     const { selectedModel, setSelectedModel, recordModelUsage } = useModelSelection();
     const { applyContextToMessages, transforms } = useConversationContext();
+
+    useEffect(() => {
+        if (!loading && threads.length === 0) {
+            createThread();
+        }
+    }, [loading, threads.length, createThread]);
+
+    useEffect(() => {
+        if (!activeThreadId) {
+            setInput('');
+            return;
+        }
+        setInput(getDraft(activeThreadId));
+    }, [activeThreadId, getDraft]);
+
+    useEffect(() => {
+        if (!activeThreadId) return;
+        const currentDraft = getDraft(activeThreadId);
+        if (currentDraft === input) return;
+        const handle = window.setTimeout(() => {
+            void updateDraft(activeThreadId, input);
+        }, 250);
+        return () => window.clearTimeout(handle);
+    }, [activeThreadId, input, updateDraft, getDraft]);
 
     const activeThread = activeThreadId ? getThread(activeThreadId) : null;
     const selectedLeafId = activeThread?.leafMessageId || activeThread?.selectedRootChild || null;
@@ -78,6 +106,8 @@ const ChatPane = () => {
 
         // Add user message to state for UI
         const userMessage = addMessage(threadId, { role: 'user', content, parentId });
+        setInput('');
+        void updateDraft(threadId, '');
 
         // Add a blank assistant message to begin streaming
         const assistantMessage = addMessage(threadId, { role: 'assistant', content: '', parentId: userMessage.id, toolCalls: [] });
@@ -388,10 +418,7 @@ const ChatPane = () => {
     if (!activeThread) {
         return (
             <div className="flex h-full w-full flex-col items-center justify-center bg-background">
-                <Button onClick={createThread}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    New Chat
-                </Button>
+                <Button onClick={createThread}>New Chat</Button>
             </div>
         );
     }

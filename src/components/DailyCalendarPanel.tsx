@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
+interface CalendarNodeData {
+    label?: string;
+    status?: string;
+    scheduled_start?: string;
+    scheduled_end?: string;
+}
+
+type CalendarNodesById = Record<string, CalendarNodeData>;
+
 type CalendarPanelProps = {
-    nodesById: Record<string, any>;
+    nodesById: CalendarNodesById;
     startOfDay: Date;
     endOfDay: Date;
     now: Date;
+    onZoomToNode: (id: string) => void;
 };
 
 function isWithinDay(iso?: string, start?: Date, end?: Date) {
@@ -18,36 +28,71 @@ function minutesSinceStartOfDay(d: Date, startOfDay: Date) {
     return Math.max(0, Math.floor((d.getTime() - startOfDay.getTime()) / 60000));
 }
 
-export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now }: CalendarPanelProps) {
+export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now, onZoomToNode }: CalendarPanelProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const userScrolledRef = useRef(false);
+    const autoScrolledRef = useRef(false);
+    const pendingScrollTimeoutRef = useRef<number | null>(null);
 
     const items = useMemo(() => {
         const result: Array<{ id: string; label: string; start: Date; end: Date }> = [];
-        for (const [id, n] of Object.entries(nodesById || {})) {
-            const ns: any = n;
-            if (!ns?.scheduled_start || !ns?.scheduled_end) continue;
-            const s = new Date(ns.scheduled_start);
-            const e = new Date(ns.scheduled_end);
-            if (isWithinDay(ns.scheduled_start, startOfDay, endOfDay) && isWithinDay(ns.scheduled_end, startOfDay, endOfDay)) {
-                result.push({ id, label: ns.label || id, start: s, end: e });
+        for (const [id, node] of Object.entries(nodesById || {})) {
+            if (!node?.scheduled_start || !node?.scheduled_end) continue;
+            const startDate = new Date(node.scheduled_start);
+            const endDate = new Date(node.scheduled_end);
+            if (isWithinDay(node.scheduled_start, startOfDay, endOfDay) && isWithinDay(node.scheduled_end, startOfDay, endOfDay)) {
+                result.push({ id, label: node.label || id, start: startDate, end: endDate });
             }
         }
         return result.sort((a, b) => a.start.getTime() - b.start.getTime());
     }, [nodesById, startOfDay, endOfDay]);
 
+    const startOfDayKey = startOfDay.getTime();
     const totalMinutes = 24 * 60;
     const pxPerMinute = 1; // 1px per minute => ~1440px total height
     const heightPx = totalMinutes * pxPerMinute;
     const nowOffset = minutesSinceStartOfDay(now, startOfDay) * pxPerMinute;
 
-    // Auto-scroll to keep current time in view
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        const padding = 120;
-        if (nowOffset < el.scrollTop + padding || nowOffset > el.scrollTop + el.clientHeight - padding) {
-            el.scrollTo({ top: Math.max(0, nowOffset - el.clientHeight / 2), behavior: 'smooth' });
+        const onScroll = () => {
+            userScrolledRef.current = true;
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => {
+            el.removeEventListener('scroll', onScroll);
+        };
+    }, []);
+
+    useEffect(() => {
+        autoScrolledRef.current = false;
+        userScrolledRef.current = false;
+    }, [startOfDayKey]);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || autoScrolledRef.current || userScrolledRef.current) {
+            return;
         }
+
+        if (pendingScrollTimeoutRef.current) {
+            window.clearTimeout(pendingScrollTimeoutRef.current);
+        }
+
+        pendingScrollTimeoutRef.current = window.setTimeout(() => {
+            if (!el || userScrolledRef.current) return;
+            autoScrolledRef.current = true;
+            const target = Math.max(0, nowOffset - el.clientHeight / 2);
+            el.scrollTo({ top: target, behavior: 'smooth' });
+        }, 250);
+
+        return () => {
+            if (pendingScrollTimeoutRef.current) {
+                window.clearTimeout(pendingScrollTimeoutRef.current);
+                pendingScrollTimeoutRef.current = null;
+            }
+        };
     }, [nowOffset]);
 
     const hourLabel = (i: number) => {
@@ -80,16 +125,24 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
                         const endMin = minutesSinceStartOfDay(it.end, startOfDay);
                         const top = startMin * pxPerMinute;
                         const height = Math.max(10, (endMin - startMin) * pxPerMinute);
-                        const status = (nodesById?.[it.id] as any)?.status;
+                        const status = nodesById?.[it.id]?.status;
                         const isCompleted = status === 'completed' || status === 'complete';
                         const bubbleClass = isCompleted
                             ? 'bg-green-500/40 border-green-500/60'
                             : 'bg-primary/20 border-primary/40';
                         return (
-                            <div key={it.id} className={cn('absolute left-0 right-0 rounded-sm border p-1 text-[10px]', bubbleClass)}
-                                style={{ top, height }}>
+                            <button
+                                key={it.id}
+                                type="button"
+                                onClick={() => onZoomToNode(it.id)}
+                                className={cn(
+                                    'absolute left-0 right-0 rounded-sm border p-1 text-[10px] text-left transition-colors hover:bg-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                                    bubbleClass
+                                )}
+                                style={{ top, height }}
+                            >
                                 <div className="font-medium text-foreground truncate">{it.label}</div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

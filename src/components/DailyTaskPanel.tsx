@@ -2,8 +2,16 @@ import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 
+interface TaskNodeData {
+    label?: string;
+    status?: string;
+    completed_at?: string;
+}
+
+type TaskNodesById = Record<string, TaskNodeData>;
+
 type TaskPanelProps = {
-    nodesById: Record<string, any>;
+    nodesById: TaskNodesById;
     onToggleComplete: (id: string) => void;
     onZoomToNode: (id: string) => void;
     startOfDay: Date;
@@ -18,12 +26,12 @@ function isWithinDay(iso?: string, start?: Date, end?: Date) {
 
 export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNode, startOfDay, endOfDay }: TaskPanelProps) {
     const { inProgressToday, completedToday } = useMemo(() => {
-        const all = Object.entries(nodesById || {});
-        const inProg = all.filter(([, n]) => (n as any)?.status === 'in-progress');
-        const completed = all.filter(([, n]) => (n as any)?.status === 'completed' && isWithinDay((n as any)?.completed_at, startOfDay, endOfDay));
+        const allEntries = Object.entries(nodesById || {});
+        const inProg = allEntries.filter(([, node]) => node?.status === 'in-progress');
+        const completed = allEntries.filter(([, node]) => node?.status === 'completed' && isWithinDay(node?.completed_at, startOfDay, endOfDay));
         return {
-            inProgressToday: inProg.map(([id, n]) => ({ id, label: (n as any)?.label || id })),
-            completedToday: completed.map(([id, n]) => ({ id, label: (n as any)?.label || id })),
+            inProgressToday: inProg.map(([id, node]) => ({ id, label: node?.label || id })),
+            completedToday: completed.map(([id, node]) => ({ id, label: node?.label || id })),
         };
     }, [nodesById, startOfDay, endOfDay]);
 
@@ -41,7 +49,10 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                                     className="h-4 w-4"
                                     onChange={() => onToggleComplete(t.id)}
                                 />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline text-[0.6rem] leading-tight truncate"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>
@@ -56,7 +67,10 @@ export default function DailyTaskPanel({ nodesById, onToggleComplete, onZoomToNo
                         {completedToday.map((t) => (
                             <li key={t.id} className="flex items-center gap-2 opacity-80">
                                 <input type="checkbox" className="h-4 w-4" checked readOnly />
-                                <button className="text-left hover:underline" onClick={() => onZoomToNode(t.id)}>
+                                <button
+                                    className="text-left hover:underline text-[0.6rem] leading-tight truncate"
+                                    onClick={() => onZoomToNode(t.id)}
+                                >
                                     {t.label}
                                 </button>
                             </li>

@@ -5,12 +5,13 @@ import { cn } from '@/lib/utils';
 import { useEffect, useRef } from 'react';
 
 interface StartNodeData {
-  label: string; 
+  label: string;
   isActive?: boolean;
   status?: string;
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  isHighlighted?: boolean;
 }
 
 export default function StartNode({ data }: { data: StartNodeData }) {
@@ -43,7 +44,8 @@ export default function StartNode({ data }: { data: StartNodeData }) {
           <div className={cn(
             "rounded-full w-32 h-32 flex items-center justify-center border-4 border-node-start/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-500",
             (data.status === 'completed') ? "bg-green-500" : "bg-node-start",
-            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60"
+            (data.status === 'in-progress') && "animate-gentle-pulse border-primary/60",
+            data.isHighlighted && 'ring-4 ring-primary/60 ring-offset-2 ring-offset-background'
           )}>
             <div className="text-center relative">
               <Play className="w-6 h-6 text-white mb-2 mx-auto" />
