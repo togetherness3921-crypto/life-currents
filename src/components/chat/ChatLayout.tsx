@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../ui/resizable';
+import React, { useState } from 'react';
 import ChatSidebar from './ChatSidebar';
 import ChatPane from './ChatPane';
 import { ChatProvider } from '@/hooks/chatProvider';
@@ -7,51 +6,11 @@ import { SystemInstructionsProvider } from '@/hooks/systemInstructionProvider';
 import { ModelSelectionProvider } from '@/hooks/modelSelectionProvider';
 import { McpProvider } from '@/hooks/mcpProvider';
 import { ConversationContextProvider } from '@/hooks/conversationContextProvider';
-import { fetchLayoutBorders, persistLayoutBorders } from '@/services/layoutPersistence';
+import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ChatLayout = () => {
-    const DEFAULT_CHAT_LAYOUT = [20, 80] as const;
-    const [chatLayout, setChatLayout] = useState<number[] | null>(null);
-
-    useEffect(() => {
-        let isMounted = true;
-        const loadLayout = async () => {
-            const borders = await fetchLayoutBorders();
-            const position = borders['chat-horizontal-1']?.position;
-            const layout = typeof position === 'number'
-                ? [position, 100 - position]
-                : [...DEFAULT_CHAT_LAYOUT];
-            if (!borders['chat-horizontal-1']) {
-                void persistLayoutBorders([
-                    { borderId: 'chat-horizontal-1', axis: 'x' as const, position: layout[0] },
-                ]);
-            }
-            if (isMounted) {
-                setChatLayout(layout);
-            }
-        };
-        void loadLayout();
-        return () => {
-            isMounted = false;
-        };
-    }, []);
-
-    const handleChatLayoutChange = useCallback((sizes: number[]) => {
-        setChatLayout(sizes);
-        void persistLayoutBorders([
-            { borderId: 'chat-horizontal-1', axis: 'x' as const, position: sizes[0] },
-        ]);
-    }, []);
-
-    if (!chatLayout) {
-        return (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-                Loading chat layout...
-            </div>
-        );
-    }
-
-    const resolvedChatLayout = chatLayout;
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
 
     return (
         <McpProvider>
@@ -59,19 +18,47 @@ const ChatLayout = () => {
                 <SystemInstructionsProvider>
                     <ConversationContextProvider>
                         <ChatProvider>
-                            <ResizablePanelGroup
-                                direction="horizontal"
-                                className="h-full w-full"
-                                onLayout={handleChatLayoutChange}
-                            >
-                                <ResizablePanel defaultSize={resolvedChatLayout[0]} minSize={15} maxSize={30}>
-                                    <ChatSidebar />
-                                </ResizablePanel>
-                                <ResizableHandle withHandle />
-                                <ResizablePanel defaultSize={resolvedChatLayout[1]}>
+                            <div className="relative flex h-full w-full overflow-hidden">
+                                <aside
+                                    id="chat-sidebar"
+                                    className={cn(
+                                        'relative h-full overflow-hidden border-r bg-card transition-[width] duration-300 ease-in-out',
+                                        isSidebarOpen ? 'w-[40%]' : 'w-0 border-transparent'
+                                    )}
+                                    aria-hidden={!isSidebarOpen}
+                                >
+                                    <div
+                                        className={cn(
+                                            'h-full w-full transition-opacity duration-200 ease-in-out',
+                                            isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+                                        )}
+                                    >
+                                        <ChatSidebar />
+                                    </div>
+                                </aside>
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarOpen((prev) => !prev)}
+                                    className={cn(
+                                        'absolute top-1/2 z-20 flex h-24 w-8 -translate-y-1/2 items-center justify-center border border-border bg-background text-muted-foreground shadow-md transition-all duration-300 ease-in-out',
+                                        isSidebarOpen
+                                            ? 'left-[40%] -translate-x-1/2 rounded-l-md rounded-r-none'
+                                            : 'left-0 rounded-r-md'
+                                    )}
+                                    aria-controls="chat-sidebar"
+                                    aria-expanded={isSidebarOpen}
+                                    title={isSidebarOpen ? 'Hide chat list' : 'Show chat list'}
+                                >
+                                    {isSidebarOpen ? (
+                                        <ChevronLeft className="h-4 w-4" />
+                                    ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                    )}
+                                </button>
+                                <main className="flex-1 h-full">
                                     <ChatPane />
-                                </ResizablePanel>
-                            </ResizablePanelGroup>
+                                </main>
+                            </div>
                         </ChatProvider>
                     </ConversationContextProvider>
                 </SystemInstructionsProvider>
