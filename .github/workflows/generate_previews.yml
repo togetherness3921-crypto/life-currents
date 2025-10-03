@@ -54,7 +54,7 @@ jobs:
       # Step 5: Run our AI Engine script.
       # This is the most important step. It executes the script from Phase 4.
       - name: Run Codex Engine Script for Instance ${{ matrix.instance }}
-        run: node .github/scripts/run_codex_instance.js
+        run: node .github/scripts/run_codex_instance.cjs
         env:
           # Securely pass the prompt and secrets from GitHub to our script as environment variables.
           # The script will be able to access these via process.env.
