@@ -1,0 +1,66 @@
+# .github/workflows/generate_previews.yml
+
+# Name of the workflow, which will appear in the GitHub Actions UI.
+name: Generate Previews with Codex
+
+# This specifies how the workflow is triggered. 'workflow_dispatch' allows for manual triggering.
+on:
+  workflow_dispatch:
+    # This defines the input fields that will appear on the GitHub UI when you run the workflow.
+    inputs:
+      prompt:
+        description: 'The high-level prompt for Codex to implement.'
+        required: true
+        type: string
+
+# Defines the set of permissions the workflow will have.
+# This is crucial for allowing the workflow to create branches and pull requests.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # This is the main job that will run our parallel instances.
+  run-codex-instances:
+    # The job will run on the latest Ubuntu runner provided by GitHub.
+    runs-on: ubuntu-latest
+    
+    # This is the core of the parallel execution. It defines a "matrix" of jobs.
+    # We will run 5 jobs, each with a unique 'instance' number from 1 to 5.
+    strategy:
+      fail-fast: false # This ensures that if one job fails, the others will continue running.
+      matrix:
+        instance: [1, 2, 3, 4, 5]
+
+    steps:
+      # Step 1: Check out the repository's code so the job can work with it.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up the Node.js environment. We'll use version 18.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Step 3: Install the project's dependencies using 'npm ci' for a clean, fast install.
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Install the OpenAI Codex CLI globally on the runner.
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      # Step 5: Run our AI Engine script.
+      # This is the most important step. It executes the script from Phase 4.
+      - name: Run Codex Engine Script for Instance ${{ matrix.instance }}
+        run: node .github/scripts/run_codex_instance.js
+        env:
+          # Securely pass the prompt and secrets from GitHub to our script as environment variables.
+          # The script will be able to access these via process.env.
+          CODEX_PROMPT: ${{ github.event.inputs.prompt }}
+          INSTANCE_NUMBER: ${{ matrix.instance }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
