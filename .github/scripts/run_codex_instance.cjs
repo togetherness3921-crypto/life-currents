@@ -8,7 +8,14 @@ const { createClient } = require('@supabase/supabase-js');
 function runCommand(command) {
   console.log(`\n[RUNNING]: ${command}`);
   try {
-    const output = execSync(command, { stdio: 'pipe' }).toString();
+    const output = execSync(command, {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        RUST_LOG: 'trace',
+        RUST_BACKTRACE: '1',
+      },
+    }).toString();
     console.log(`[OUTPUT]: ${output.trim()}`);
     return output.trim();
   } catch (error) {
@@ -93,7 +100,8 @@ async function main() {
   // --- 4. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
   // The non-interactive 'exec' command does not support '--approval-mode'.
-  runCommand(`codex exec --model gpt-5-codex "${CODEX_PROMPT}"`);
+  // Switching to gpt-4o as it's confirmed to work with the chat/completions endpoint.
+  runCommand(`codex exec --model gpt-4o "${CODEX_PROMPT}"`);
 
   // --- 5. Check for Changes ---
   const status = runCommand('git status --porcelain');
