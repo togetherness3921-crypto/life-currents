@@ -82,7 +82,8 @@ async function main() {
   runCommand(`git config user.email "codex-agent@users.noreply.github.com"`);
 
   const date = new Date().toISOString().split('T')[0];
-  const branchName = `codex-build-${date}-instance-${INSTANCE_NUMBER}`;
+  const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+  const branchName = `codex-build-${date}-instance-${INSTANCE_NUMBER}-${uniqueSuffix}`;
   runCommand(`git checkout -b ${branchName}`);
   console.log(`\nCreated new branch: ${branchName}`);
 
