@@ -143,6 +143,39 @@ export type Database = {
         }
         Relationships: []
       }
+      preview_builds: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_seen: boolean
+          preview_url: string
+          pr_number: number
+          pr_url: string
+          status: "pending_review" | "committed"
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_seen: boolean
+          preview_url: string
+          pr_number: number
+          pr_url: string
+          status?: "pending_review" | "committed"
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_seen?: boolean
+          preview_url?: string
+          pr_number?: number
+          pr_url?: string
+          status?: "pending_review" | "committed"
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sub_objectives: {
         Row: {
           created_at: string | null
