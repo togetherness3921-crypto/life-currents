@@ -92,7 +92,7 @@ async function main() {
   runCommand('mkdir -p ~/.codex');
   runCommand('echo \'preferred_auth_method = "apikey"\' > ~/.codex/config.toml');
   runCommand('cat ~/.codex/config.toml'); // Verify file contents
-  runCommand(`bash -lc 'printenv OPENAI_API_KEY | codex login --with-api-key'`);
+  runCommand('bash -lc \'codex login --api-key "$OPENAI_API_KEY"\'');
 
   // --- 3. Codex Health Check ---
   console.log(`\nRunning Codex health check...`);
