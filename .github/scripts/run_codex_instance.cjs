@@ -28,25 +28,41 @@ function runCommand(command) {
   }
 }
 
+// A helper function to call the GitHub REST API with the runner's token.
+async function githubFetch(url) {
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${process.env.GH_TOKEN}`,
+      'Accept': 'application/vnd.github+json'
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`GitHub API request failed (${response.status} ${response.statusText}): ${text}`);
+  }
+  return response.json();
+}
+
 // A helper function to poll for the Cloudflare URL.
 async function getPreviewUrl(commitSha) {
   console.log(`\nPolling for Cloudflare preview URL for commit: ${commitSha}...`);
   const maxRetries = 20; // Try for up to 10 minutes (20 * 30s)
+  const repo = process.env.GITHUB_REPOSITORY;
+  const baseUrl = `https://api.github.com/repos/${repo}`;
+
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const command = `gh api repos/${process.env.GITHUB_REPOSITORY}/deployments --param sha=${commitSha}`;
-      const deploymentsJson = runCommand(command);
-      const deployments = JSON.parse(deploymentsJson);
+      const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
+      const deployments = await githubFetch(deploymentsUrl);
 
       const successDeployment = deployments.find(
         (d) => d.environment === 'Preview'
       );
 
       if (successDeployment) {
-        const statusesPath = successDeployment.statuses_url.replace('https://api.github.com/', '');
-        const statusesJson = runCommand(`gh api ${statusesPath}`);
-        const statuses = JSON.parse(statusesJson);
-        const latestStatus = statuses.find(s => s.state === 'success');
+        const statuses = await githubFetch(successDeployment.statuses_url);
+        const latestStatus = statuses.find((s) => s.state === 'success' && s.environment_url);
         if (latestStatus && latestStatus.environment_url) {
           console.log(`\n✅ Success! Found preview URL: ${latestStatus.environment_url}`);
           return latestStatus.environment_url;
@@ -54,6 +70,7 @@ async function getPreviewUrl(commitSha) {
       }
     } catch (error) {
       console.log(`Attempt ${i + 1}/${maxRetries}: Deployment not ready yet. Retrying in 30 seconds...`);
+      console.log(error.message);
     }
     await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
   }
