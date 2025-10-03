@@ -159,6 +159,23 @@ All colors MUST be HSL.
   animation: fade-in 0.3s ease-out;
 }
 
+@keyframes preview-attention {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 15px 35px -15px rgba(56, 189, 248, 0.4);
+  }
+
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 20px 40px -12px rgba(192, 132, 252, 0.55);
+  }
+}
+
+.animate-preview-attention {
+  animation: preview-attention 1.8s ease-in-out infinite;
+}
+
 .animate-gentle-pulse {
   animation: gentle-pulse 2s ease-in-out infinite;
 }
