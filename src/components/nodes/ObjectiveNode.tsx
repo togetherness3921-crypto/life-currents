@@ -12,6 +12,7 @@ interface ObjectiveNodeData {
   onDelete?: () => void;
   onComplete?: () => void;
   onMeasure?: (width: number, height: number) => void;
+  isHighlighted?: boolean;
 }
 
 const statusIcons = {
@@ -60,7 +61,13 @@ export default function ObjectiveNode({ data }: { data: ObjectiveNodeData }) {
   return (
     <ContextMenu>
       <ContextMenuTrigger>
-        <div ref={nodeRef} className="relative">
+        <div
+          ref={nodeRef}
+          className={cn(
+            'relative transition-transform duration-500',
+            data.isHighlighted && 'scale-[1.02]'
+          )}
+        >
 
           <Handle
             type="target"
@@ -73,7 +80,8 @@ export default function ObjectiveNode({ data }: { data: ObjectiveNodeData }) {
               "rounded-lg border-2 border-blue-400 shadow-lg transition-all duration-500",
               "min-w-[200px] max-w-[300px]",
               isCompleted ? "bg-green-500" : "bg-blue-800",
-              isInProgress && "animate-gentle-pulse border-primary/60"
+              isInProgress && "animate-gentle-pulse border-primary/60",
+              data.isHighlighted && "shadow-[0_0_0_4px_rgba(59,130,246,0.45)]"
             )}
           >
             {/* Header */}

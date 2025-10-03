@@ -6,6 +6,7 @@ type CalendarPanelProps = {
     startOfDay: Date;
     endOfDay: Date;
     now: Date;
+    onZoomToNode: (id: string) => void;
 };
 
 function isWithinDay(iso?: string, start?: Date, end?: Date) {
@@ -18,8 +19,10 @@ function minutesSinceStartOfDay(d: Date, startOfDay: Date) {
     return Math.max(0, Math.floor((d.getTime() - startOfDay.getTime()) / 60000));
 }
 
-export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now }: CalendarPanelProps) {
+export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, now, onZoomToNode }: CalendarPanelProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const hasAutoScrolled = useRef(false);
+    const userInteracted = useRef(false);
 
     const items = useMemo(() => {
         const result: Array<{ id: string; label: string; start: Date; end: Date }> = [];
@@ -40,14 +43,40 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
     const heightPx = totalMinutes * pxPerMinute;
     const nowOffset = minutesSinceStartOfDay(now, startOfDay) * pxPerMinute;
 
-    // Auto-scroll to keep current time in view
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        const padding = 120;
-        if (nowOffset < el.scrollTop + padding || nowOffset > el.scrollTop + el.clientHeight - padding) {
-            el.scrollTo({ top: Math.max(0, nowOffset - el.clientHeight / 2), behavior: 'smooth' });
-        }
+
+        const handleInteraction = () => {
+            userInteracted.current = true;
+        };
+
+        el.addEventListener('wheel', handleInteraction, { passive: true });
+        el.addEventListener('touchstart', handleInteraction, { passive: true });
+        el.addEventListener('mousedown', handleInteraction, { passive: true });
+        el.addEventListener('scroll', handleInteraction, { passive: true });
+
+        return () => {
+            el.removeEventListener('wheel', handleInteraction);
+            el.removeEventListener('touchstart', handleInteraction);
+            el.removeEventListener('mousedown', handleInteraction);
+            el.removeEventListener('scroll', handleInteraction);
+        };
+    }, []);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || userInteracted.current) return;
+
+        const timeout = window.setTimeout(() => {
+            const currentEl = containerRef.current;
+            if (!currentEl || userInteracted.current) return;
+            const target = Math.max(0, nowOffset - currentEl.clientHeight / 2);
+            currentEl.scrollTo({ top: target, behavior: hasAutoScrolled.current ? 'smooth' : 'auto' });
+            hasAutoScrolled.current = true;
+        }, hasAutoScrolled.current ? 0 : 300);
+
+        return () => window.clearTimeout(timeout);
     }, [nowOffset]);
 
     const hourLabel = (i: number) => {
@@ -86,10 +115,18 @@ export default function DailyCalendarPanel({ nodesById, startOfDay, endOfDay, no
                             ? 'bg-green-500/40 border-green-500/60'
                             : 'bg-primary/20 border-primary/40';
                         return (
-                            <div key={it.id} className={cn('absolute left-0 right-0 rounded-sm border p-1 text-[10px]', bubbleClass)}
-                                style={{ top, height }}>
+                            <button
+                                key={it.id}
+                                type="button"
+                                className={cn(
+                                    'absolute left-0 right-0 rounded-sm border p-1 text-left text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                    bubbleClass
+                                )}
+                                style={{ top, height }}
+                                onClick={() => onZoomToNode(it.id)}
+                            >
                                 <div className="font-medium text-foreground truncate">{it.label}</div>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

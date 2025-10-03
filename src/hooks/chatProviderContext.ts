@@ -12,10 +12,21 @@ export interface ToolCallState {
 export interface Message {
     id: string;
     parentId: string | null;
-    role: 'user' | 'assistant';
+    role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
     thinking?: string;
     children: string[];
+    toolCalls?: ToolCallState[];
+    createdAt?: Date;
+    updatedAt?: Date;
+    threadId?: string;
+}
+
+export interface NewMessageInput {
+    parentId: string | null;
+    role: Message['role'];
+    content: string;
+    thinking?: string;
     toolCalls?: ToolCallState[];
 }
 
@@ -35,15 +46,21 @@ export interface ChatContextValue {
     threads: ChatThread[];
     messages: MessageStore;
     activeThreadId: string | null;
+    drafts: Record<string, string>;
 
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;
-    addMessage: (threadId: string, message: Omit<Message, 'id' | 'children'>) => Message;
+    addMessage: (threadId: string, message: NewMessageInput) => Message;
     getMessageChain: (leafId: string | null) => Message[];
-    updateMessage: (messageId: string, updates: Partial<Message>) => void;
+    updateMessage: (
+        messageId: string,
+        updates: Partial<Message> | ((message: Message) => Partial<Message>)
+    ) => void;
     selectBranch: (threadId: string | null, parentId: string | null, childId: string) => void;
     updateThreadTitle: (threadId: string, title: string) => void;
+    updateDraft: (threadId: string, text: string) => void;
+    clearDraft: (threadId: string) => void;
 }
 
 export const ChatContext = createContext<ChatContextValue | undefined>(undefined);

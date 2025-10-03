@@ -52,6 +52,8 @@ export interface ModelInfo {
     description?: string;
 }
 
+export type ToolIntent = 'TOOL' | 'CONVERSATION';
+
 export const getAvailableModels = async (): Promise<ModelInfo[]> => {
     if (!OPEN_ROUTER_API_KEY) {
         throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
@@ -80,6 +82,75 @@ export const getAvailableModels = async (): Promise<ModelInfo[]> => {
         name: model?.name ?? model?.id,
         description: model?.description,
     })).filter((model) => typeof model.id === 'string' && model.id.length > 0);
+};
+
+const extractMessageContent = (content: unknown): string => {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content
+            .map((item) => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+                    return item.text;
+                }
+                return '';
+            })
+            .join(' ');
+    }
+    if (content && typeof content === 'object' && 'text' in content && typeof (content as { text?: unknown }).text === 'string') {
+        return (content as { text: string }).text;
+    }
+    return '';
+};
+
+export const getToolIntent = async (userQuery: string): Promise<ToolIntent> => {
+    if (!OPEN_ROUTER_API_KEY) {
+        throw new Error("VITE_OPENROUTER_API_KEY is not set in .env file");
+    }
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${OPEN_ROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'google/gemini-2.5-pro-flash',
+                stream: false,
+                messages: [
+                    {
+                        role: 'system',
+                        content:
+                            'You are an expert at classifying user intent. The user has access to specialized tools for interacting with a personal knowledge graph. Your only job is to determine if the user\'s query requires one of these specialized tools or if it is a general conversational query. Respond with ONLY the single word `TOOL` if a specialized tool is needed, or the single word `CONVERSATION` if it is a general knowledge question, statement, or command.',
+                    },
+                    { role: 'user', content: userQuery },
+                ],
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Failed to classify intent: ${response.status} ${response.statusText} - ${errorBody}`);
+        }
+
+        const data = await response.json();
+        const choice = data?.choices?.[0];
+        const content = extractMessageContent(choice?.message?.content);
+        const normalized = content?.trim().toUpperCase();
+
+        if (normalized === 'TOOL' || normalized === 'CONVERSATION') {
+            return normalized;
+        }
+
+        console.warn('[OpenRouter] Unexpected tool intent response:', content);
+        return 'TOOL';
+    } catch (error) {
+        console.warn('[OpenRouter] Tool intent classification failed, defaulting to TOOL mode.', error);
+        return 'TOOL';
+    }
 };
 
 export const getGeminiResponse = async (
