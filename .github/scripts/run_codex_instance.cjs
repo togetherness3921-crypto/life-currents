@@ -34,17 +34,16 @@ async function getPreviewUrl(commitSha) {
   const maxRetries = 20; // Try for up to 10 minutes (20 * 30s)
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const command = `gh api repos/${process.env.GITHUB_REPOSITORY}/commits/${commitSha}/deployments`;
+      const command = `gh api repos/${process.env.GITHUB_REPOSITORY}/deployments --param sha=${commitSha}`;
       const deploymentsJson = runCommand(command);
       const deployments = JSON.parse(deploymentsJson);
 
       const successDeployment = deployments.find(
-        (d) => d.environment === 'Preview' && d.latest_status?.state === 'success'
+        (d) => d.environment === 'Preview'
       );
 
       if (successDeployment) {
-        const statusUrl = successDeployment.statuses_url;
-        const statusesJson = runCommand(`gh api ${statusUrl.replace('https://api.github.com/', '')}`);
+        const statusesJson = runCommand(`gh api ${successDeployment.statuses_url}`);
         const statuses = JSON.parse(statusesJson);
         const latestStatus = statuses.find(s => s.state === 'success');
         if (latestStatus && latestStatus.environment_url) {
