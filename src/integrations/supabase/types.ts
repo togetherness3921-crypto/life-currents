@@ -181,6 +181,36 @@ export type Database = {
           },
         ]
       }
+      preview_builds: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_seen: boolean
+          pr_number: number
+          pr_url: string
+          preview_url: string
+          status: 'pending_review' | 'committed'
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_seen?: boolean
+          pr_number: number
+          pr_url: string
+          preview_url: string
+          status?: 'pending_review' | 'committed'
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_seen?: boolean
+          pr_number?: number
+          pr_url?: string
+          preview_url?: string
+          status?: 'pending_review' | 'committed'
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
