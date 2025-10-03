@@ -11,7 +11,7 @@ export interface ToolCallState {
 
 export interface Message {
     id: string;
-    parentId: string | null; 
+    parentId: string | null;
     role: 'user' | 'assistant';
     content: string;
     thinking?: string;
@@ -35,7 +35,7 @@ export interface ChatContextValue {
     threads: ChatThread[];
     messages: MessageStore;
     activeThreadId: string | null;
-    
+
     setActiveThreadId: (id: string | null) => void;
     getThread: (id: string) => ChatThread | undefined;
     createThread: () => string;
