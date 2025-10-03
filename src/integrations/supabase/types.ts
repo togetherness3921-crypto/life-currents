@@ -107,6 +107,36 @@ export type Database = {
         }
         Relationships: []
       }
+      preview_builds: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_seen: boolean
+          preview_url: string | null
+          pr_number: number
+          pr_url: string
+          status: Database['public']['Enums']['preview_status'] | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_seen?: boolean
+          preview_url?: string | null
+          pr_number: number
+          pr_url: string
+          status?: Database['public']['Enums']['preview_status'] | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_seen?: boolean
+          preview_url?: string | null
+          pr_number?: number
+          pr_url?: string
+          status?: Database['public']['Enums']['preview_status'] | null
+        }
+        Relationships: []
+      }
       nodes: {
         Row: {
           created_at: string | null
@@ -189,7 +219,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      preview_status: 'pending_review' | 'committed'
     }
     CompositeTypes: {
       [_ in never]: never
