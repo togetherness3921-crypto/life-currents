@@ -75,7 +75,8 @@ async function main() {
   // --- 2. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
   // Note: The OPENAI_API_KEY is automatically picked up by the codex CLI.
-  runCommand(`codex exec --model gpt-5-codex --approval-mode auto "${CODEX_PROMPT}"`);
+  // The non-interactive 'exec' command does not support '--approval-mode'.
+  runCommand(`codex exec --model gpt-5-codex "${CODEX_PROMPT}"`);
 
   // --- 3. Check for Changes ---
   const status = runCommand('git status --porcelain');
