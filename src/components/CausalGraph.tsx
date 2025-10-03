@@ -29,6 +29,7 @@ import StatsPanel from './StatsPanel';
 import ChatLayout from './chat/ChatLayout';
 import { useToast } from '@/hooks/use-toast';
 import { fetchLayoutBorders, persistLayoutBorders } from '@/services/layoutPersistence';
+import PreviewBuildsOverlay from './preview-builds/PreviewBuildsOverlay';
 
 const nodeTypes = {
   startNode: StartNode,
@@ -444,7 +445,7 @@ export default function CausalGraph() {
   const resolvedProgressLayout = progressLayoutState ?? [...DEFAULT_PROGRESS_LAYOUT];
 
   return (
-      <div className="w-full h-[100dvh] bg-graph-background">
+      <div className="relative w-full h-[100dvh] bg-graph-background">
         <ResizablePanelGroup
           direction="vertical"
           className="h-full w-full"
@@ -574,6 +575,7 @@ export default function CausalGraph() {
           <ChatLayout />
         </ResizablePanel>
       </ResizablePanelGroup>
+      <PreviewBuildsOverlay />
     </div>
   );
 }

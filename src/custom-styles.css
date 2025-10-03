@@ -12,3 +12,19 @@ The SVG scales, so we need a larger base font size to ensure readability.
 .progress-graph-svg text {
     font-size: 28px !important;
 }
+
+@keyframes build-indicator-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45);
+    }
+    50% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+    }
+}
+
+.build-indicator-animate {
+    animation: build-indicator-pulse 1.8s ease-in-out infinite;
+}
