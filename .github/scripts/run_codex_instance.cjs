@@ -100,9 +100,8 @@ async function main() {
 
   // --- 4. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
-  // The non-interactive 'exec' command does not support '--approval-mode'.
-  // Switching to gpt-4o as it's confirmed to work with the chat/completions endpoint.
-  runCommand(`codex exec --model gpt-4o "${CODEX_PROMPT}"`);
+  const model = process.env.CODEX_MODEL || 'gpt-5-codex';
+  runCommand(`codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`);
 
   // --- 5. Check for Changes ---
   const status = runCommand('git status --porcelain');
