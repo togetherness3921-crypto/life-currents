@@ -42,4 +42,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
-        run: node .github/scripts/update_build_status.js
+        run: node .github/scripts/update_build_status.cjs
