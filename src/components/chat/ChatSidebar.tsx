@@ -35,9 +35,12 @@ const ChatSidebar = () => {
                             >
                                 <p className="truncate">{thread.title}</p>
                             </div>
-                        ))}
+                    ))}
                 </div>
             </ScrollArea>
+            <footer>
+                <div className="p-2 text-xs text-center text-yellow-500">Build System Test Active</div>
+            </footer>
         </div>
     );
 };
