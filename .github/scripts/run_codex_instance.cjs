@@ -43,7 +43,8 @@ async function getPreviewUrl(commitSha) {
       );
 
       if (successDeployment) {
-        const statusesJson = runCommand(`gh api ${successDeployment.statuses_url}`);
+        const statusesPath = successDeployment.statuses_url.replace('https://api.github.com/', '');
+        const statusesJson = runCommand(`gh api ${statusesPath}`);
         const statuses = JSON.parse(statusesJson);
         const latestStatus = statuses.find(s => s.state === 'success');
         if (latestStatus && latestStatus.environment_url) {
@@ -101,7 +102,12 @@ async function main() {
   // --- 4. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
   const model = process.env.CODEX_MODEL || 'gpt-5-codex';
-  runCommand(`codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`);
+  try {
+    runCommand(`codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`);
+  } catch (error) {
+    console.error('\nCodex exec failed for this instance. Skipping further steps.');
+    return;
+  }
 
   // --- 5. Check for Changes ---
   const status = runCommand('git status --porcelain');
