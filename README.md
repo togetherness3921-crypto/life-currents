@@ -79,3 +79,23 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Prompt-to-Preview CI/CD configuration
+
+The in-app preview build workflow dispatches the `merge_pr.yml` GitHub Action from the browser. Configure the following Vite environment variables to enable the Commit action:
+
+| Variable | Description |
+| --- | --- |
+| `VITE_GITHUB_TOKEN` | A GitHub token with `actions:write` permission for this repository. |
+| `VITE_GITHUB_REPO_OWNER` | The repository owner or organization name. |
+| `VITE_GITHUB_REPO_NAME` | The repository name. |
+| `VITE_GITHUB_MERGE_WORKFLOW` (optional) | The workflow file name, defaults to `merge_pr.yml`. |
+| `VITE_GITHUB_DEFAULT_BRANCH` (optional) | The branch used when dispatching the workflow, defaults to `main`. |
+
+Add these variables to your `.env` file (e.g. `.env.local`) so Vite can expose them to the client:
+
+```bash
+VITE_GITHUB_TOKEN=ghp_example
+VITE_GITHUB_REPO_OWNER=your-org
+VITE_GITHUB_REPO_NAME=life-currents
+```
