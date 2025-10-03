@@ -1,0 +1,45 @@
+# .github/workflows/merge_pr.yml
+
+name: Merge Preview Build PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'The number of the Pull Request to merge.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Merge the Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "Merging PR #${{ github.event.inputs.pr_number }}"
+          gh pr merge ${{ github.event.inputs.pr_number }} --merge --delete-branch --admin
+          echo "PR merge successful."
+
+      - name: Update Supabase build status
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        run: node .github/scripts/update_build_status.js
