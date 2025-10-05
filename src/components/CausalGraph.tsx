@@ -454,6 +454,9 @@ export default function CausalGraph() {
           <ResizablePanelGroup direction="horizontal" onLayout={handleTopLayoutChange} className="h-full">
             {/* Left: Main graph */}
             <ResizablePanel defaultSize={resolvedTopLayout[0]} minSize={40} className="relative">
+              <div className="absolute left-3 top-3 z-50 text-lg font-semibold text-yellow-400 drop-shadow">
+                Inserted to test
+              </div>
               <ReactFlow
                 nodes={nodesWithActions}
                 edges={edges}
