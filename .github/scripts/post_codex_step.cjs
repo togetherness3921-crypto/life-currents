@@ -22,7 +22,7 @@ function run(command, opts = {}) {
   }
 }
 
-async function getPreviewUrl(branchName) {
+async function getPreviewUrl(branchName, commitSha) {
   const repo = process.env.GITHUB_REPOSITORY;
   const baseUrl = `https://api.github.com/repos/${repo}`;
 
@@ -132,7 +132,7 @@ async function main() {
   console.log(`Created PR #${prNumber} at ${prUrl}`);
 
   const commitSha = run('git rev-parse HEAD');
-  const previewUrl = await getPreviewUrl(branchName);
+  const previewUrl = await getPreviewUrl(branchName, commitSha);
 
   console.log('Updating Supabase with build record...');
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
