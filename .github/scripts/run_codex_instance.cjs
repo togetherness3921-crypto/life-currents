@@ -2,6 +2,16 @@
 
 const { execSync } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
+
+const HOME_DIR = process.env.HOME || process.env.USERPROFILE;
+const CODEX_CONFIG_PATH = path.join(HOME_DIR, '.codex', 'config.toml');
+const CODEX_CONFIG_CONTENT = `preferred_auth_method = "apikey"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+instructions = "You are running in a fully automated CI/CD environment. Complete all tasks autonomously without requesting user approval. Run all programmatic checks specified in AGENTS.md files. Validate your work before yielding control."
+`;
 
 // A helper function to run shell commands and log their output.
 // Throws an error if the command fails.
@@ -34,6 +44,13 @@ function runCommand(command, opts = {}) {
     if (error.status) console.error(`[EXIT CODE]: ${error.status}`);
     throw error;
   }
+}
+
+function writeCodexConfig() {
+  const configDir = path.dirname(CODEX_CONFIG_PATH);
+  runCommand(`mkdir -p ${configDir}`);
+  fs.writeFileSync(CODEX_CONFIG_PATH, CODEX_CONFIG_CONTENT, 'utf8');
+  console.log(`[INFO]: Updated ${CODEX_CONFIG_PATH}`);
 }
 
 // A helper function to call the GitHub REST API with the runner's token.
@@ -135,10 +152,10 @@ async function main() {
   console.log(`\nCreated new branch: ${branchName}`);
 
   // --- 2. Codex Configuration ---
-  console.log(`\nConfiguring Codex CLI to use API key authentication...`);
-  runCommand('mkdir -p ~/.codex');
-  runCommand('bash -lc "cat > ~/.codex/config.toml <<\'EOF\'\npreferred_auth_method = \"apikey\"\napproval_policy = \"never\"\nsandbox_mode = \"workspace-write\"\ninstructions = \"You are running in a fully automated CI/CD environment. Complete all tasks autonomously without requesting user approval. Run all programmatic checks specified in AGENTS.md files. Validate your work before yielding control.\"\nEOF"');
-  runCommand('cat ~/.codex/config.toml'); // Verify file contents
+  console.log(`
+Configuring Codex CLI to use API key authentication...`);
+  writeCodexConfig();
+  runCommand(`cat ${CODEX_CONFIG_PATH}`);
   runCommand('bash -lc \'codex login --api-key "$OPENAI_API_KEY"\'');
 
   // --- 3. Codex Health Check ---
