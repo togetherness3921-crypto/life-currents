@@ -54,14 +54,21 @@ async function getPreviewUrl(commitSha) {
 
     const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
     const deployments = await fetchJson(deploymentsUrl);
+    console.log(`Found ${deployments.length} deployment(s).`);
     const previewDeployment = deployments.find((d) => d.environment === 'Preview');
     if (previewDeployment) {
+      console.log(`Preview deployment id: ${previewDeployment.id}`);
       const statuses = await fetchJson(previewDeployment.statuses_url);
-      const success = statuses.find((s) => s.state === 'success' && s.environment_url);
+      console.log(`Deployment has ${statuses.length} status update(s).`);
+      const success = statuses.find((s) => s.state === 'success' && (s.environment_url || s.target_url));
       if (success) {
-        console.log(`Found preview URL: ${success.environment_url}`);
-        return success.environment_url;
+        const url = success.environment_url || success.target_url;
+        console.log(`Found preview URL: ${url}`);
+        return url;
       }
+      statuses.forEach((s, idx) => {
+        console.log(`Status ${idx + 1}: state=${s.state}, target_url=${s.target_url}, environment_url=${s.environment_url}`);
+      });
     }
 
     console.log('Preview URL not ready. Retrying in 30 seconds...');
