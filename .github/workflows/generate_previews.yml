@@ -64,13 +64,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           CODEX_OUTPUT: ${{ steps.codex.outputs.final-message }}
-        run: node .github/scripts/post_codex_step.cjs
+        # Temporarily disable the script to run the diagnostic step cleanly
+        # run: node .github/scripts/post_codex_step.cjs
 
       - name: Diagnostic - Check Deployments API
         if: always() # Run this even if the previous step fails
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          COMMIT_SHA: ${{ steps.post_codex.outputs.commit_sha || github.sha }}
+          # Use the main branch SHA for this diagnostic run
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           echo "--- DIAGNOSTIC: Checking deployments for SHA: $COMMIT_SHA ---"
           gh api "repos/${{ github.repository }}/deployments?sha=${COMMIT_SHA}"
