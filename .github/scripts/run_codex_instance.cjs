@@ -168,7 +168,7 @@ Configuring Codex CLI to use API key authentication...`);
   // --- 4. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
   const model = process.env.CODEX_MODEL || 'gpt-5-codex';
-  const codexCommand = `codex exec --no-terminal --ask-for-approval never --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`;
+  const codexCommand = `codex exec --ask-for-approval never --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`;
   const execResult = runCommand(codexCommand, { ignoreError: true });
 
   if (execResult.status !== 0 && execResult.status !== 2) {
