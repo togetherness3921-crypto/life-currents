@@ -2,7 +2,10 @@ import CausalGraph from "@/components/CausalGraph";
 
 const Index = () => {
   return (
-    <div className="h-[100svh] w-full overflow-hidden">
+    <div className="relative h-[100svh] w-full overflow-hidden">
+      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl font-semibold text-yellow-400 drop-shadow-lg">
+        Inserted to test
+      </span>
       <CausalGraph />
     </div>
   );
