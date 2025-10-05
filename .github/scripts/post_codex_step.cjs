@@ -1,5 +1,7 @@
 const { execSync } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
 
 function run(command, opts = {}) {
   const { ignoreError = false } = opts;
@@ -86,6 +88,7 @@ async function main() {
 
   run(`git config user.name "Codex Agent"`);
   run(`git config user.email "codex-agent@users.noreply.github.com"`);
+  run('git fetch origin main');
 
   const date = new Date().toISOString().split('T')[0];
   const branchSuffix = Math.random().toString(36).slice(2, 8);
@@ -106,7 +109,14 @@ async function main() {
   const prBody = CODEX_OUTPUT
     ? `Automated Codex run output:\n\n${CODEX_OUTPUT}`
     : 'Automated Codex run';
-  const prResult = run(`gh pr create --title "${prTitle}" --body "${prBody}" --fill`);
+
+  const prBodyPath = path.join(process.cwd(), `codex-pr-body-${branchSuffix}.md`);
+  fs.writeFileSync(prBodyPath, prBody, 'utf8');
+
+  const prCommand = `gh pr create --repo ${process.env.GITHUB_REPOSITORY} --base main --head ${branchName} --title "${prTitle}" --body-file "${prBodyPath}"`;
+  const prResult = run(prCommand);
+
+  fs.unlinkSync(prBodyPath);
 
   const prUrlMatch = prResult.match(/https?:\/\/\S+/);
   if (!prUrlMatch) {
