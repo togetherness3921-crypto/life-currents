@@ -50,8 +50,6 @@ async function getPreviewUrl(commitSha) {
       if (cfCheck.conclusion && ['failure', 'cancelled', 'timed_out'].includes(cfCheck.conclusion)) {
         throw new Error(`Cloudflare deployment failed with conclusion '${cfCheck.conclusion}'. Check Cloudflare logs.`);
       }
-    } else if (i > 3) {
-      throw new Error('Cloudflare deployment not triggered. Check integration.');
     }
 
     const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
