@@ -51,7 +51,9 @@ jobs:
           sandbox: workspace-write
           model: gpt-5-codex
 
-      # Step 3: Commit and Create PR
+      - name: Install Supabase client
+        run: npm install @supabase/supabase-js
+
       - name: Commit and Create PR
         env:
           INSTANCE_NUMBER: ${{ env.INSTANCE_NUMBER }}
