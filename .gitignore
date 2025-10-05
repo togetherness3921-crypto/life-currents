@@ -30,3 +30,4 @@ bun.lockb
 # Ignore the nested project folder
 # This path is a separate repo and should not be tracked by the parent.
 /remote-mcp-server-authless/
+/external/codex

@@ -5,7 +5,8 @@ const { createClient } = require('@supabase/supabase-js');
 
 // A helper function to run shell commands and log their output.
 // Throws an error if the command fails.
-function runCommand(command) {
+function runCommand(command, opts = {}) {
+  const { ignoreError = false } = opts;
   console.log(`\n[RUNNING]: ${command}`);
   try {
     const output = execSync(command, {
@@ -16,11 +17,18 @@ function runCommand(command) {
         RUST_BACKTRACE: '1',
       },
     }).toString();
-    console.log(`[OUTPUT]: ${output.trim()}`);
-    return output.trim();
+    const trimmed = output.trim();
+    console.log(`[OUTPUT]: ${trimmed}`);
+    return ignoreError ? { output: trimmed, status: 0 } : trimmed;
   } catch (error) {
     console.error(`[ERROR]: Command failed: ${command}`);
-    // Log all parts of the error object for maximum debuggability
+    if (ignoreError) {
+      return {
+        output: error.stdout ? error.stdout.toString().trim() : '',
+        stderr: error.stderr ? error.stderr.toString().trim() : '',
+        status: error.status ?? null,
+      };
+    }
     if (error.stdout) console.error(`[STDOUT]: ${error.stdout.toString()}`);
     if (error.stderr) console.error(`[STDERR]: ${error.stderr.toString()}`);
     if (error.status) console.error(`[EXIT CODE]: ${error.status}`);
@@ -52,29 +60,50 @@ async function getPreviewUrl(commitSha) {
   const baseUrl = `https://api.github.com/repos/${repo}`;
 
   for (let i = 0; i < maxRetries; i++) {
+    console.log(`\n--- Poll attempt ${i + 1}/${maxRetries} ---`);
     try {
+      // --- GitHub-Side Diagnostic: Check for a Cloudflare status check ---
+      const checkRunsUrl = `${baseUrl}/commits/${commitSha}/check-runs`;
+      const { check_runs } = await githubFetch(checkRunsUrl);
+      const cfCheckRun = check_runs.find(cr => cr.app.slug === 'cloudflare-pages');
+
+      if (cfCheckRun) {
+        console.log(`Found 'Cloudflare Pages' check-run (Status: ${cfCheckRun.status}, Conclusion: ${cfCheckRun.conclusion || 'N/A'})`);
+        // Fail fast if the deployment has already failed on GitHub's side.
+        if (cfCheckRun.conclusion && ['failure', 'cancelled', 'skipped', 'timed_out'].includes(cfCheckRun.conclusion)) {
+          throw new Error(`Error: Cloudflare Pages deployment failed with conclusion '${cfCheckRun.conclusion}'. Check Cloudflare build logs for details.`);
+        }
+      } else if (i > 3) { // After 2 minutes (4 attempts * 30s), if we've seen nothing, fail.
+        throw new Error("Error: Cloudflare Pages deployment was not triggered for this commit. Check the GitHub App integration and repository permissions.");
+      }
+
+      // --- Main Logic: Check for a successful deployment URL ---
       const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
       const deployments = await githubFetch(deploymentsUrl);
+      const cfDeployment = deployments.find(d => d.environment === 'Preview');
 
-      const successDeployment = deployments.find(
-        (d) => d.environment === 'Preview'
-      );
-
-      if (successDeployment) {
-        const statuses = await githubFetch(successDeployment.statuses_url);
-        const latestStatus = statuses.find((s) => s.state === 'success' && s.environment_url);
-        if (latestStatus && latestStatus.environment_url) {
-          console.log(`\n✅ Success! Found preview URL: ${latestStatus.environment_url}`);
-          return latestStatus.environment_url;
+      if (cfDeployment) {
+        const statuses = await githubFetch(cfDeployment.statuses_url);
+        const successStatus = statuses.find(s => s.state === 'success' && s.environment_url);
+        if (successStatus) {
+          console.log(`\n✅ Success! Found preview URL: ${successStatus.environment_url}`);
+          return successStatus.environment_url;
         }
       }
     } catch (error) {
-      console.log(`Attempt ${i + 1}/${maxRetries}: Deployment not ready yet. Retrying in 30 seconds...`);
-      console.log(error.message);
+      // If it's one of our specific diagnostic errors, re-throw it to stop the process immediately.
+      if (error.message.startsWith('Error:')) {
+        throw error;
+      }
+      // Otherwise, it might be a transient network error, so we log it and continue polling.
+      console.log(`Polling error on attempt ${i + 1}: ${error.message}`);
     }
-    await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
+
+    console.log(`Deployment not ready yet. Retrying in 30 seconds...`);
+    await new Promise(resolve => setTimeout(resolve, 30000));
   }
-  throw new Error('Timed out waiting for Cloudflare preview URL.');
+
+  throw new Error('Timed out waiting for Cloudflare preview URL. The deployment may have stalled or failed in Cloudflare.');
 }
 
 async function main() {
@@ -108,7 +137,7 @@ async function main() {
   // --- 2. Codex Configuration ---
   console.log(`\nConfiguring Codex CLI to use API key authentication...`);
   runCommand('mkdir -p ~/.codex');
-  runCommand('echo \'preferred_auth_method = "apikey"\' > ~/.codex/config.toml');
+  runCommand('bash -lc "cat > ~/.codex/config.toml <<\'EOF\'\npreferred_auth_method = \"apikey\"\napproval_policy = \"never\"\nsandbox_mode = \"workspace-write\"\ninstructions = \"You are running in a fully automated CI/CD environment. Complete all tasks autonomously without requesting user approval. Run all programmatic checks specified in AGENTS.md files. Validate your work before yielding control.\"\nEOF"');
   runCommand('cat ~/.codex/config.toml'); // Verify file contents
   runCommand('bash -lc \'codex login --api-key "$OPENAI_API_KEY"\'');
 
@@ -119,11 +148,19 @@ async function main() {
   // --- 4. Run Codex ---
   console.log(`\nRunning Codex with prompt...`);
   const model = process.env.CODEX_MODEL || 'gpt-5-codex';
-  try {
-    runCommand(`codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`);
-  } catch (error) {
-    console.error('\nCodex exec failed for this instance. Skipping further steps.');
+  const codexCommand = `codex exec --no-terminal --quiet --ask-for-approval never --skip-git-repo-check --config tools.web_search=true --model ${model} "${CODEX_PROMPT}"`;
+  const execResult = runCommand(codexCommand, { ignoreError: true });
+
+  if (execResult.status !== 0 && execResult.status !== 2) {
+    console.error(`\nCodex exec exited with status ${execResult.status}. Skipping further steps.`);
+    if (execResult.stderr) {
+      console.error(execResult.stderr);
+    }
     return;
+  }
+
+  if (execResult.status === 2) {
+    console.warn('\nCodex exec completed with warnings (exit code 2). Continuing if changes are present.');
   }
 
   // --- 5. Check for Changes ---
