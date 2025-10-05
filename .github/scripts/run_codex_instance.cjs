@@ -48,7 +48,10 @@ function runCommand(command, opts = {}) {
 
 function writeCodexConfig() {
   const configDir = path.dirname(CODEX_CONFIG_PATH);
-  runCommand(`mkdir -p ${configDir}`);
+  // Ensure the directory exists before writing
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
   fs.writeFileSync(CODEX_CONFIG_PATH, CODEX_CONFIG_CONTENT, 'utf8');
   console.log(`[INFO]: Updated ${CODEX_CONFIG_PATH}`);
 }
