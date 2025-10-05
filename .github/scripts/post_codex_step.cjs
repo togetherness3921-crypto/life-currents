@@ -132,6 +132,7 @@ async function main() {
   console.log(`Created PR #${prNumber} at ${prUrl}`);
 
   const commitSha = run('git rev-parse HEAD');
+  console.log(`::set-output name=commit_sha::${commitSha}`);
   const previewUrl = await getPreviewUrl(branchName, commitSha);
 
   console.log('Updating Supabase with build record...');

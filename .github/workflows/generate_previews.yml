@@ -55,10 +55,23 @@ jobs:
         run: npm install @supabase/supabase-js
 
       - name: Commit and Create PR
+        id: post_codex
         env:
+          # Pass secrets and context to the script
+          PROMPT: ${{ env.PROMPT }}
           INSTANCE_NUMBER: ${{ env.INSTANCE_NUMBER }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           CODEX_OUTPUT: ${{ steps.codex.outputs.final-message }}
         run: node .github/scripts/post_codex_step.cjs
+
+      - name: Diagnostic - Check Deployments API
+        if: always() # Run this even if the previous step fails
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          COMMIT_SHA: ${{ steps.post_codex.outputs.commit_sha || github.sha }}
+        run: |
+          echo "--- DIAGNOSTIC: Checking deployments for SHA: $COMMIT_SHA ---"
+          gh api "repos/${{ github.repository }}/deployments?sha=${COMMIT_SHA}"
+          echo "--- END DIAGNOSTIC ---"
