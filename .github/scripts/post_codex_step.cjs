@@ -23,59 +23,56 @@ function run(command, opts = {}) {
 }
 
 async function getPreviewUrl(branchName, commitSha) {
+  console.log(`\nPolling for Cloudflare preview URL for commit: ${commitSha}...`);
+  const maxRetries = 20; // Try for up to 10 minutes (20 * 30s)
   const repo = process.env.GITHUB_REPOSITORY;
   const baseUrl = `https://api.github.com/repos/${repo}`;
+  let cfDeployment = null;
 
-  const fetchJson = async (url) => {
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${process.env.GH_TOKEN}`,
-        Accept: 'application/vnd.github+json',
-      },
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`GitHub API error ${response.status}: ${text}`);
-    }
-    return response.json();
-  };
-
-  for (let i = 0; i < 20; i++) {
-    console.log(`\n--- Deployment poll attempt ${i + 1}/20 ---`);
-    const checkRunsUrl = `${baseUrl}/commits/${commitSha}/check-runs`;
-    const { check_runs } = await fetchJson(checkRunsUrl);
-    const cfCheck = check_runs.find((cr) => cr.app?.slug === 'cloudflare-pages');
-    if (cfCheck) {
-      console.log(`Cloudflare check status: ${cfCheck.status}, conclusion: ${cfCheck.conclusion || 'N/A'}`);
-      if (cfCheck.conclusion && ['failure', 'cancelled', 'timed_out'].includes(cfCheck.conclusion)) {
-        throw new Error(`Cloudflare deployment failed with conclusion '${cfCheck.conclusion}'. Check Cloudflare logs.`);
-      }
-    }
-
-    const deploymentsUrl = `${baseUrl}/deployments?head=${branchName}`;
+  // Stage 1: Poll until a Cloudflare Pages deployment object exists for this commit.
+  console.log('\n--- Stage 1: Waiting for deployment to be created ---');
+  for (let i = 0; i < maxRetries; i++) {
+    console.log(`Attempt ${i + 1}/${maxRetries}: Checking for deployment object...`);
+    const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
     const deployments = await fetchJson(deploymentsUrl);
-    console.log(`Found ${deployments.length} deployment(s).`);
-    const previewDeployment = deployments.find((d) => d.environment === 'Preview');
-    if (previewDeployment) {
-      console.log(`Preview deployment id: ${previewDeployment.id}`);
-      const statuses = await fetchJson(previewDeployment.statuses_url);
-      console.log(`Deployment has ${statuses.length} status update(s).`);
-      const success = statuses.find((s) => s.state === 'success' && (s.environment_url || s.target_url));
-      if (success) {
-        const url = success.environment_url || success.target_url;
-        console.log(`Found preview URL: ${url}`);
-        return url;
-      }
-      statuses.forEach((s, idx) => {
-        console.log(`Status ${idx + 1}: state=${s.state}, target_url=${s.target_url}, environment_url=${s.environment_url}`);
-      });
+
+    cfDeployment = deployments.find((d) => d.environment === 'Preview' && d.creator?.login === 'cloudflare-pages');
+
+    if (cfDeployment) {
+      console.log(`Found Cloudflare Pages deployment object (ID: ${cfDeployment.id}). Proceeding to Stage 2.`);
+      break;
     }
 
-    console.log('Preview URL not ready. Retrying in 30 seconds...');
-    await new Promise((resolve) => setTimeout(resolve, 30000));
+    await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
   }
 
-  throw new Error('Timed out waiting for Cloudflare preview URL.');
+  if (!cfDeployment) {
+    throw new Error('Timed out waiting for a Cloudflare Pages deployment to be created on this commit.');
+  }
+
+  // Stage 2: Poll the specific deployment's statuses until it succeeds.
+  console.log('\n--- Stage 2: Waiting for deployment to report success ---');
+  for (let i = 0; i < maxRetries; i++) {
+    console.log(`Attempt ${i + 1}/${maxRetries}: Checking deployment status...`);
+    const statuses = await fetchJson(cfDeployment.statuses_url);
+    const successStatus = statuses.find((s) => s.state === 'success' && (s.environment_url || s.target_url));
+
+    if (successStatus) {
+      const url = successStatus.environment_url || successStatus.target_url;
+      console.log(`\n✅ Success! Found preview URL: ${url}`);
+      return url;
+    }
+
+    // Check for a hard failure state to fail fast.
+    const failureStatus = statuses.find((s) => ['failure', 'error'].includes(s.state));
+    if (failureStatus) {
+      throw new Error(`Cloudflare deployment failed with state '${failureStatus.state}'. Check Cloudflare logs.`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 30000));
+  }
+
+  throw new Error('Timed out waiting for the Cloudflare deployment to succeed.');
 }
 
 async function main() {
