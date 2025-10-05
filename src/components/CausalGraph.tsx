@@ -444,13 +444,16 @@ export default function CausalGraph() {
   const resolvedProgressLayout = progressLayoutState ?? [...DEFAULT_PROGRESS_LAYOUT];
 
   return (
-      <div className="w-full h-[100dvh] bg-graph-background">
-        <ResizablePanelGroup
-          direction="vertical"
-          className="h-full w-full"
-          onLayout={handleMainVerticalLayoutChange}
-        >
-          <ResizablePanel defaultSize={resolvedMainVerticalLayout[0]}>
+    <div className="w-full h-[100dvh] bg-graph-background relative">
+      <div className="absolute left-6 top-6 z-50 text-yellow-300 text-3xl font-bold drop-shadow">
+        Inserted to test
+      </div>
+      <ResizablePanelGroup
+        direction="vertical"
+        className="h-full w-full"
+        onLayout={handleMainVerticalLayoutChange}
+      >
+        <ResizablePanel defaultSize={resolvedMainVerticalLayout[0]}>
           <ResizablePanelGroup direction="horizontal" onLayout={handleTopLayoutChange} className="h-full">
             {/* Left: Main graph */}
             <ResizablePanel defaultSize={resolvedTopLayout[0]} minSize={40} className="relative">
