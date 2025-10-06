@@ -13,6 +13,9 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <div className="fixed left-4 top-1/2 z-50 -translate-y-1/2 rounded bg-black/80 px-3 py-2 text-lg font-semibold text-yellow-300">
+        Inserted to test
+      </div>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
