@@ -64,8 +64,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           CODEX_OUTPUT: ${{ steps.codex.outputs.final-message }}
-        # Temporarily disable the script to run the diagnostic step cleanly
-        run: echo "Skipping post Codex script for diagnostics"
+        run: node .github/scripts/post_codex_step.cjs
 
       - name: Diagnostic - Check Deployments API
         if: always() # Run this even if the previous step fails
