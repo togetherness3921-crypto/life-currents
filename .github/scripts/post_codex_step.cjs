@@ -3,13 +3,45 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
-async function fetchJson(url) {
+const loggedRequestMetadata = new Set();
+
+function setActionOutput(name, value) {
+  const outputFile = process.env.GITHUB_OUTPUT;
+  if (outputFile) {
+    fs.appendFileSync(outputFile, `${name}=${String(value)}\n`);
+  } else {
+    console.log(`::set-output name=${name}::${value}`);
+  }
+}
+
+async function fetchJson(url, options = {}) {
+  const headers = {
+    Authorization: `Bearer ${process.env.GH_TOKEN}`,
+    Accept: 'application/vnd.github+json',
+    ...options.headers,
+  };
+
   const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${process.env.GH_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-    },
+    ...options,
+    headers,
   });
+
+  const requestKey = `${response.url}::${options.method || 'GET'}`;
+  const requestId = response.headers.get('x-github-request-id');
+  const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+  const rateLimitReset = response.headers.get('x-ratelimit-reset');
+  const oauthScopes = response.headers.get('x-oauth-scopes');
+  const linkHeader = response.headers.get('link');
+  const resource = url.replace('https://api.github.com', '');
+
+  if (!loggedRequestMetadata.has(requestKey)) {
+    loggedRequestMetadata.add(requestKey);
+    console.log(`[GitHub] ${options.method || 'GET'} ${resource} -> ${response.status}`);
+    console.log(`         request-id=${requestId || 'unknown'} remaining=${rateLimitRemaining || 'unknown'} reset=${rateLimitReset || 'unknown'} scopes=${oauthScopes || 'unknown'}`);
+    if (linkHeader) {
+      console.log(`         pagination=${linkHeader}`);
+    }
+  }
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`GitHub API error ${response.status}: ${text}`);
@@ -51,6 +83,11 @@ function extractPreviewUrl(text) {
 async function tryCheckRunPreview(baseUrl, commitSha) {
   const checkRunsUrl = `${baseUrl}/commits/${commitSha}/check-runs`;
   const { check_runs: checkRuns = [] } = await fetchJson(checkRunsUrl);
+  console.log(`Fetched ${checkRuns.length} check-runs for commit ${commitSha}.`);
+  checkRuns.slice(0, 5).forEach((run) => {
+    const appSlug = run.app?.slug || run.app?.name || 'unknown-app';
+    console.log(`  • Check-run ${run.id} (${run.name}) from ${appSlug} status=${run.status} conclusion=${run.conclusion}`);
+  });
   const cfCheckRun = checkRuns.find((run) => run.app?.slug === 'cloudflare-pages');
 
   if (!cfCheckRun) {
@@ -80,9 +117,48 @@ async function tryCheckRunPreview(baseUrl, commitSha) {
   return null;
 }
 
+async function tryStatusPreview(baseUrl, commitSha) {
+  const statusesUrl = `${baseUrl}/commits/${commitSha}/statuses?per_page=100`;
+  const statuses = await fetchJson(statusesUrl);
+  console.log(`Fetched ${statuses.length} commit statuses for ${commitSha}.`);
+  statuses.slice(0, 5).forEach((status) => {
+    const context = status.context || 'unknown-context';
+    const state = status.state || 'unknown-state';
+    const creator = status.creator?.login || 'unknown-user';
+    console.log(`  • Status ${status.id} context="${context}" state=${state} by ${creator}`);
+  });
+
+  const cfStatus = statuses.find((status) => {
+    const context = (status.context || '').toLowerCase();
+    return context.includes('cloudflare') || context.includes('pages');
+  });
+
+  if (!cfStatus) {
+    console.log('No Cloudflare-like commit status found yet.');
+    return null;
+  }
+
+  const possibleSources = [cfStatus.target_url, cfStatus.description, cfStatus.context];
+  for (const source of possibleSources) {
+    const url = extractPreviewUrl(source);
+    if (url) {
+      console.log('Extracted preview URL from commit status.');
+      return url;
+    }
+  }
+
+  console.log('Cloudflare-like status located but did not contain a preview URL.');
+  return null;
+}
+
 async function tryCommentPreview(baseUrl, prNumber) {
   const commentsUrl = `${baseUrl}/issues/${prNumber}/comments?per_page=100`;
   const comments = await fetchJson(commentsUrl);
+  console.log(`Fetched ${comments.length} issue comments for PR #${prNumber}.`);
+  comments.slice(-5).forEach((comment) => {
+    const login = comment.user?.login || 'unknown-user';
+    console.log(`  • Comment ${comment.id} by ${login} at ${comment.created_at}`);
+  });
   const cfComment = [...comments]
     .reverse()
     .find((comment) => {
@@ -102,6 +178,82 @@ async function tryCommentPreview(baseUrl, prNumber) {
   }
 
   console.log('Cloudflare comment located but did not contain a preview URL.');
+  return null;
+}
+
+async function tryTimelinePreview(baseUrl, prNumber) {
+  const timelineUrl = `${baseUrl}/issues/${prNumber}/timeline?per_page=100`;
+  const events = await fetchJson(timelineUrl, {
+    headers: {
+      Accept: 'application/vnd.github.mockingbird-preview+json',
+    },
+  });
+  console.log(`Fetched ${events.length} timeline events for PR #${prNumber}.`);
+
+  const timelineComment = [...events]
+    .reverse()
+    .find((event) => {
+      const login = event.actor?.login || '';
+      const body = event.body || '';
+      const isCloudflareActor = ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase());
+      return event.event === 'commented' && isCloudflareActor && extractPreviewUrl(body);
+    });
+
+  if (!timelineComment) {
+    console.log('Cloudflare timeline event with preview URL not found yet.');
+    return null;
+  }
+
+  const url = extractPreviewUrl(timelineComment.body);
+  if (url) {
+    console.log('Extracted preview URL from PR timeline event.');
+    return url;
+  }
+
+  console.log('Cloudflare timeline event located but did not contain a preview URL.');
+  return null;
+}
+
+async function tryReviewPreview(baseUrl, prNumber) {
+  const reviewsUrl = `${baseUrl}/pulls/${prNumber}/reviews?per_page=100`;
+  const reviews = await fetchJson(reviewsUrl);
+  console.log(`Fetched ${reviews.length} pull request reviews for PR #${prNumber}.`);
+
+  const cfReview = [...reviews]
+    .reverse()
+    .find((review) => {
+      const login = review.user?.login || '';
+      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase()) && extractPreviewUrl(review.body);
+    });
+
+  if (cfReview) {
+    const url = extractPreviewUrl(cfReview.body);
+    if (url) {
+      console.log('Extracted preview URL from PR review body.');
+      return url;
+    }
+  }
+
+  const reviewCommentsUrl = `${baseUrl}/pulls/${prNumber}/comments?per_page=100`;
+  const reviewComments = await fetchJson(reviewCommentsUrl);
+  console.log(`Fetched ${reviewComments.length} review comments for PR #${prNumber}.`);
+
+  const cfReviewComment = [...reviewComments]
+    .reverse()
+    .find((comment) => {
+      const login = comment.user?.login || '';
+      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase()) && extractPreviewUrl(comment.body);
+    });
+
+  if (cfReviewComment) {
+    const url = extractPreviewUrl(cfReviewComment.body);
+    if (url) {
+      console.log('Extracted preview URL from review comment.');
+      return url;
+    }
+  }
+
+  console.log('Cloudflare review artifacts not found yet.');
   return null;
 }
 
@@ -125,6 +277,16 @@ async function getPreviewUrl(prNumber, commitSha) {
     }
 
     try {
+      const fromStatuses = await tryStatusPreview(baseUrl, commitSha);
+      if (fromStatuses) {
+        console.log(`\n✅ Success! Found preview URL via commit status: ${fromStatuses}`);
+        return fromStatuses;
+      }
+    } catch (error) {
+      console.log(`Status polling error: ${error.message}`);
+    }
+
+    try {
       const fromComments = await tryCommentPreview(baseUrl, prNumber);
       if (fromComments) {
         console.log(`\n✅ Success! Found preview URL via PR comment: ${fromComments}`);
@@ -132,6 +294,26 @@ async function getPreviewUrl(prNumber, commitSha) {
       }
     } catch (error) {
       console.log(`Comment polling error: ${error.message}`);
+    }
+
+    try {
+      const fromTimeline = await tryTimelinePreview(baseUrl, prNumber);
+      if (fromTimeline) {
+        console.log(`\n✅ Success! Found preview URL via PR timeline: ${fromTimeline}`);
+        return fromTimeline;
+      }
+    } catch (error) {
+      console.log(`Timeline polling error: ${error.message}`);
+    }
+
+    try {
+      const fromReviews = await tryReviewPreview(baseUrl, prNumber);
+      if (fromReviews) {
+        console.log(`\n✅ Success! Found preview URL via PR review: ${fromReviews}`);
+        return fromReviews;
+      }
+    } catch (error) {
+      console.log(`Review polling error: ${error.message}`);
     }
 
     console.log('Preview URL not available yet. Waiting 30 seconds before next attempt...');
@@ -195,8 +377,13 @@ async function main() {
   console.log(`Created PR #${prNumber} at ${prUrl}`);
 
   const commitSha = run('git rev-parse HEAD');
-  console.log(`::set-output name=commit_sha::${commitSha}`);
+  setActionOutput('commit_sha', commitSha);
+
   const previewUrl = await getPreviewUrl(prNumber, commitSha);
+
+  if (previewUrl) {
+    setActionOutput('preview_url', previewUrl);
+  }
 
   console.log('Updating Supabase with build record...');
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
