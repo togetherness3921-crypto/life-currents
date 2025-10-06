@@ -36,57 +36,109 @@ function run(command, opts = {}) {
   }
 }
 
-async function getPreviewUrl(branchName, commitSha) {
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractPreviewUrl(text) {
+  if (!text) return null;
+  const match = text.match(/https?:\/\/[^\s>\)]+/i);
+  if (!match) return null;
+  const cleaned = match[0].replace(/[)\]\s]*$/, '');
+  return cleaned.includes('.pages.dev') ? cleaned : match[0];
+}
+
+async function tryCheckRunPreview(baseUrl, commitSha) {
+  const checkRunsUrl = `${baseUrl}/commits/${commitSha}/check-runs`;
+  const { check_runs: checkRuns = [] } = await fetchJson(checkRunsUrl);
+  const cfCheckRun = checkRuns.find((run) => run.app?.slug === 'cloudflare-pages');
+
+  if (!cfCheckRun) {
+    console.log('No Cloudflare Pages check-run found yet.');
+    return null;
+  }
+
+  console.log(`Cloudflare Pages check-run status: ${cfCheckRun.status}; conclusion: ${cfCheckRun.conclusion || 'pending'}`);
+
+  if (cfCheckRun.status === 'completed' && cfCheckRun.conclusion && ['success', 'neutral'].includes(cfCheckRun.conclusion)) {
+    const possibleSources = [
+      cfCheckRun.output?.summary,
+      cfCheckRun.output?.text,
+      cfCheckRun.output?.title,
+      cfCheckRun.details_url,
+    ];
+
+    for (const source of possibleSources) {
+      const url = extractPreviewUrl(source);
+      if (url) {
+        console.log('Extracted preview URL from Cloudflare check-run.');
+        return url;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function tryCommentPreview(baseUrl, prNumber) {
+  const commentsUrl = `${baseUrl}/issues/${prNumber}/comments?per_page=100`;
+  const comments = await fetchJson(commentsUrl);
+  const cfComment = [...comments]
+    .reverse()
+    .find((comment) => {
+      const login = comment.user?.login || '';
+      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase());
+    });
+
+  if (!cfComment) {
+    console.log('Cloudflare deployment comment not found yet.');
+    return null;
+  }
+
+  const url = extractPreviewUrl(cfComment.body);
+  if (url) {
+    console.log('Extracted preview URL from Cloudflare deployment comment.');
+    return url;
+  }
+
+  console.log('Cloudflare comment located but did not contain a preview URL.');
+  return null;
+}
+
+async function getPreviewUrl(prNumber, commitSha) {
   console.log(`\nPolling for Cloudflare preview URL for commit: ${commitSha}...`);
-  const maxRetries = 20; // Try for up to 10 minutes (20 * 30s)
+  const maxRetries = 40; // Try for up to 20 minutes (40 * 30s)
   const repo = process.env.GITHUB_REPOSITORY;
   const baseUrl = `https://api.github.com/repos/${repo}`;
-  let cfDeployment = null;
 
-  // Stage 1: Poll until a Cloudflare Pages deployment object exists for this commit.
-  console.log('\n--- Stage 1: Waiting for deployment to be created ---');
-  for (let i = 0; i < maxRetries; i++) {
-    console.log(`Attempt ${i + 1}/${maxRetries}: Checking for deployment object...`);
-    const deploymentsUrl = `${baseUrl}/deployments?sha=${commitSha}`;
-    const deployments = await fetchJson(deploymentsUrl);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`\n--- Poll attempt ${attempt}/${maxRetries} ---`);
 
-    cfDeployment = deployments.find((d) => d.environment === 'Preview' && d.creator?.login === 'cloudflare-pages');
-
-    if (cfDeployment) {
-      console.log(`Found Cloudflare Pages deployment object (ID: ${cfDeployment.id}). Proceeding to Stage 2.`);
-      break;
+    try {
+      const fromCheckRun = await tryCheckRunPreview(baseUrl, commitSha);
+      if (fromCheckRun) {
+        console.log(`\n✅ Success! Found preview URL via check-run: ${fromCheckRun}`);
+        return fromCheckRun;
+      }
+    } catch (error) {
+      console.log(`Check-run polling error: ${error.message}`);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
-  }
-
-  if (!cfDeployment) {
-    throw new Error('Timed out waiting for a Cloudflare Pages deployment to be created on this commit.');
-  }
-
-  // Stage 2: Poll the specific deployment's statuses until it succeeds.
-  console.log('\n--- Stage 2: Waiting for deployment to report success ---');
-  for (let i = 0; i < maxRetries; i++) {
-    console.log(`Attempt ${i + 1}/${maxRetries}: Checking deployment status...`);
-    const statuses = await fetchJson(cfDeployment.statuses_url);
-    const successStatus = statuses.find((s) => s.state === 'success' && (s.environment_url || s.target_url));
-
-    if (successStatus) {
-      const url = successStatus.environment_url || successStatus.target_url;
-      console.log(`\n✅ Success! Found preview URL: ${url}`);
-      return url;
+    try {
+      const fromComments = await tryCommentPreview(baseUrl, prNumber);
+      if (fromComments) {
+        console.log(`\n✅ Success! Found preview URL via PR comment: ${fromComments}`);
+        return fromComments;
+      }
+    } catch (error) {
+      console.log(`Comment polling error: ${error.message}`);
     }
 
-    // Check for a hard failure state to fail fast.
-    const failureStatus = statuses.find((s) => ['failure', 'error'].includes(s.state));
-    if (failureStatus) {
-      throw new Error(`Cloudflare deployment failed with state '${failureStatus.state}'. Check Cloudflare logs.`);
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    console.log('Preview URL not available yet. Waiting 30 seconds before next attempt...');
+    await delay(30000);
   }
 
-  throw new Error('Timed out waiting for the Cloudflare deployment to succeed.');
+  throw new Error('Timed out waiting for the Cloudflare Pages preview URL.');
 }
 
 async function main() {
@@ -144,7 +196,7 @@ async function main() {
 
   const commitSha = run('git rev-parse HEAD');
   console.log(`::set-output name=commit_sha::${commitSha}`);
-  const previewUrl = await getPreviewUrl(branchName, commitSha);
+  const previewUrl = await getPreviewUrl(prNumber, commitSha);
 
   console.log('Updating Supabase with build record...');
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
