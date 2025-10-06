@@ -80,6 +80,12 @@ function extractPreviewUrl(text) {
   return cleaned.includes('.pages.dev') ? cleaned : match[0];
 }
 
+const CLOUDFLARE_APP_IDENTIFIERS = [
+  'cloudflare-workers-and-pages', // The modern slug for the GitHub App
+  'cloudflare-pages',             // A potential legacy or alternative slug
+  'cloudflare-pages[bot]',        // A username format for bot comments
+];
+
 async function tryCheckRunPreview(baseUrl, commitSha) {
   const checkRunsUrl = `${baseUrl}/commits/${commitSha}/check-runs`;
   const { check_runs: checkRuns = [] } = await fetchJson(checkRunsUrl);
@@ -88,7 +94,10 @@ async function tryCheckRunPreview(baseUrl, commitSha) {
     const appSlug = run.app?.slug || run.app?.name || 'unknown-app';
     console.log(`  • Check-run ${run.id} (${run.name}) from ${appSlug} status=${run.status} conclusion=${run.conclusion}`);
   });
-  const cfCheckRun = checkRuns.find((run) => run.app?.slug === 'cloudflare-pages');
+  const cfCheckRun = checkRuns.find((run) => {
+    const appSlug = run.app?.slug?.toLowerCase() || '';
+    return CLOUDFLARE_APP_IDENTIFIERS.includes(appSlug);
+  });
 
   if (!cfCheckRun) {
     console.log('No Cloudflare Pages check-run found yet.');
@@ -163,7 +172,7 @@ async function tryCommentPreview(baseUrl, prNumber) {
     .reverse()
     .find((comment) => {
       const login = comment.user?.login || '';
-      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase());
+      return CLOUDFLARE_APP_IDENTIFIERS.includes(login.toLowerCase());
     });
 
   if (!cfComment) {
@@ -195,7 +204,7 @@ async function tryTimelinePreview(baseUrl, prNumber) {
     .find((event) => {
       const login = event.actor?.login || '';
       const body = event.body || '';
-      const isCloudflareActor = ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase());
+      const isCloudflareActor = CLOUDFLARE_APP_IDENTIFIERS.includes(login.toLowerCase());
       return event.event === 'commented' && isCloudflareActor && extractPreviewUrl(body);
     });
 
@@ -223,7 +232,7 @@ async function tryReviewPreview(baseUrl, prNumber) {
     .reverse()
     .find((review) => {
       const login = review.user?.login || '';
-      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase()) && extractPreviewUrl(review.body);
+      return CLOUDFLARE_APP_IDENTIFIERS.includes(login.toLowerCase()) && extractPreviewUrl(review.body);
     });
 
   if (cfReview) {
@@ -242,7 +251,7 @@ async function tryReviewPreview(baseUrl, prNumber) {
     .reverse()
     .find((comment) => {
       const login = comment.user?.login || '';
-      return ['cloudflare-workers-and-pages', 'cloudflare-pages[bot]', 'cloudflare-pages'].includes(login.toLowerCase()) && extractPreviewUrl(comment.body);
+      return CLOUDFLARE_APP_IDENTIFIERS.includes(login.toLowerCase()) && extractPreviewUrl(comment.body);
     });
 
   if (cfReviewComment) {
