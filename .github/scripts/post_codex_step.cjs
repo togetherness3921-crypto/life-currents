@@ -3,6 +3,20 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`GitHub API error ${response.status}: ${text}`);
+  }
+  return response.json();
+}
+
 function run(command, opts = {}) {
   const { ignoreError = false } = opts;
   console.log(`\n[RUNNING]: ${command}`);
