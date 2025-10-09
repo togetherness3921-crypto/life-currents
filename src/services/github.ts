@@ -12,6 +12,11 @@ export async function dispatchMergeWorkflow(prNumber: number) {
   }
 
   const endpoint = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/actions/workflows/${GITHUB_MERGE_WORKFLOW}/dispatches`;
+  console.debug('[dispatchMergeWorkflow] Dispatching merge workflow', {
+    endpoint,
+    prNumber,
+    ref: GITHUB_DEFAULT_BRANCH,
+  });
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -28,6 +33,11 @@ export async function dispatchMergeWorkflow(prNumber: number) {
     }),
   });
 
+  console.debug('[dispatchMergeWorkflow] Response received', {
+    status: response.status,
+    statusText: response.statusText,
+  });
+
   if (!response.ok) {
     let message = `status ${response.status}`;
     try {
@@ -35,8 +45,9 @@ export async function dispatchMergeWorkflow(prNumber: number) {
       if (data && typeof data.message === 'string') {
         message = data.message;
       }
+      console.error('[dispatchMergeWorkflow] Error response body', data);
     } catch (error) {
-      // Ignore JSON parsing errors and use default message
+      console.error('[dispatchMergeWorkflow] Failed to parse error response JSON', error);
     }
     throw new Error(`GitHub workflow dispatch failed: ${message}`);
   }
