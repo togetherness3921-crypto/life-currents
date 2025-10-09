@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GitPullRequest, Loader2, GitMerge, Eye } from 'lucide-react';
+import { GitPullRequest, Loader2, GitMerge } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -169,7 +169,6 @@ const PreviewBuildsWidget = () => {
                           size="sm"
                           onClick={() => handleViewPreview(build.preview_url)}
                         >
-                          <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />
                           View
                         </Button>
                         <Button
