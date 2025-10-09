@@ -1,0 +1,47 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write # To write the injected secrets
+  deployments: write # To deploy to Cloudflare Pages
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject Secrets
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          sed -i "s|__VITE_GITHUB_TOKEN__|${GH_TOKEN}|g" src/services/github.ts
+          sed -i "s|__VITE_GITHUB_REPO_OWNER__|${{ github.repository_owner }}|g" src/services/github.ts
+          sed -i "s|__VITE_GITHUB_REPO_NAME__|${{ github.event.repository.name }}|g" src/services/github.ts
+          echo "Secrets injected."
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: 'life-currents'
+          directory: 'dist'
+          gitHubToken: ${{ secrets.GH_TOKEN }}

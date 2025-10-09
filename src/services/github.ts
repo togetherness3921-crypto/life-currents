@@ -1,13 +1,15 @@
+<<<<<<< HEAD
 // WARNING: This is a temporary hardcoded token for testing.
 // It should be removed and replaced with an environment variable.
+=======
+>>>>>>> 279e191 (Auto-sync)
 const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
 const GITHUB_REPO_OWNER = import.meta.env.VITE_GITHUB_REPO_OWNER;
 const GITHUB_REPO_NAME = import.meta.env.VITE_GITHUB_REPO_NAME;
 const GITHUB_MERGE_WORKFLOW = import.meta.env.VITE_GITHUB_MERGE_WORKFLOW ?? 'merge_pr.yml';
 const GITHUB_DEFAULT_BRANCH = import.meta.env.VITE_GITHUB_DEFAULT_BRANCH ?? 'main';
 
-const REQUIRED_ENV_ERROR =
-  'Missing GitHub configuration. Please set the VITE_GITHUB_TOKEN, VITE_GITHUB_REPO_OWNER, and VITE_GITHUB_REPO_NAME environment variables.';
+const REQUIRED_ENV_ERROR = 'Missing GitHub configuration. Please set the VITE_GITHUB_TOKEN, VITE_GITHUB_REPO_OWNER, and VITE_GITHUB_REPO_NAME environment variables.';
 
 export async function dispatchMergeWorkflow(prNumber: number) {
   if (!GITHUB_TOKEN || !GITHUB_REPO_OWNER || !GITHUB_REPO_NAME) {
