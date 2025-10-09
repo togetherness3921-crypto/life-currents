@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-// WARNING: This is a temporary hardcoded token for testing.
-// It should be removed and replaced with an environment variable.
-=======
->>>>>>> 279e191 (Auto-sync)
 const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
 const GITHUB_REPO_OWNER = import.meta.env.VITE_GITHUB_REPO_OWNER;
 const GITHUB_REPO_NAME = import.meta.env.VITE_GITHUB_REPO_NAME;
