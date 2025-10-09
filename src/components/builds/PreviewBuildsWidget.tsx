@@ -1,25 +1,13 @@
 import { useState } from 'react';
-import { GitPullRequest, ExternalLink, Loader2, GitMerge } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { GitPullRequest, Loader2, GitMerge } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { usePreviewBuilds } from '@/hooks/usePreviewBuilds';
 import { useToast } from '@/hooks/use-toast';
 
 const MAX_BADGE_COUNT = 99;
-
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'committed':
-      return 'Committed';
-    case 'pending_review':
-    default:
-      return 'Pending Review';
-  }
-};
 
 const PreviewBuildsWidget = () => {
   const [open, setOpen] = useState(false);
@@ -94,9 +82,6 @@ const PreviewBuildsWidget = () => {
             <GitMerge className="h-5 w-5" aria-hidden="true" />
             Preview Builds
           </DialogTitle>
-          <DialogDescription>
-            Review generated preview builds before committing them to the main branch.
-          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           {loading && (
@@ -116,66 +101,44 @@ const PreviewBuildsWidget = () => {
             </div>
           )}
           {!loading && !error && builds.length > 0 && (
-            <ScrollArea className="max-h-[420px] pr-4">
-              <div className="space-y-3">
-                {builds.map((build) => {
-                  const isCommitting = committingPrNumbers.has(build.pr_number);
-                  const isCommitted = build.status === 'committed';
-                  const commitDisabled = isCommitted || isCommitting;
-                  const commitLabel = isCommitted
-                    ? 'Committed'
-                    : isCommitting
-                    ? 'Committing…'
-                    : 'Commit';
+            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+              {builds.map((build) => {
+                const isCommitting = committingPrNumbers.has(build.pr_number);
+                const isCommitted = build.status === 'committed';
+                const commitDisabled = isCommitted || isCommitting;
+                const commitLabel = isCommitted ? 'Committed' : isCommitting ? 'Committing…' : 'Commit';
 
-                  return (
-                    <div
-                      key={build.id ?? build.pr_number}
-                      className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm transition hover:border-primary/50 sm:flex-row sm:items-center sm:justify-between"
+                return (
+                  <div
+                    key={build.id ?? build.pr_number}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm transition hover:border-primary/50"
+                  >
+                    <a
+                      href={build.pr_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-primary underline-offset-4 hover:underline"
                     >
-                      <div className="flex flex-1 flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={build.pr_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
-                          >
-                            PR #{build.pr_number}
-                          </a>
-                          <Badge variant={isCommitted ? 'secondary' : 'outline'}>{getStatusLabel(build.status)}</Badge>
-                        </div>
-                        <a
-                          href={build.preview_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-                        >
-                          {build.preview_url}
-                        </a>
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={build.preview_url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                            View
-                          </a>
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleCommit(build)}
-                          disabled={commitDisabled}
-                          aria-live="polite"
-                        >
-                          {isCommitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
-                          {commitLabel}
-                        </Button>
-                      </div>
+                      PR #{build.pr_number}
+                    </a>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={build.preview_url}>View</a>
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleCommit(build)}
+                        disabled={commitDisabled}
+                        aria-live="polite"
+                      >
+                        {isCommitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
+                        {commitLabel}
+                      </Button>
                     </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </DialogContent>
