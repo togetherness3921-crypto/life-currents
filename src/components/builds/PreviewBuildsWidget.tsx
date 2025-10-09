@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GitPullRequest, Loader2, GitMerge } from 'lucide-react';
+import { GitPullRequest, Loader2, GitMerge, ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -122,18 +122,25 @@ const PreviewBuildsWidget = () => {
                       PR #{build.pr_number}
                     </a>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={build.preview_url}>View</a>
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleCommit(build)}
-                        disabled={commitDisabled}
-                        aria-live="polite"
-                      >
-                        {isCommitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
-                        {commitLabel}
-                      </Button>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(build.preview_url, '_blank', 'noopener,noreferrer')}
+                        >
+                          <ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleCommit(build)}
+                          disabled={commitDisabled}
+                          aria-live="polite"
+                        >
+                          {isCommitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
+                          {commitLabel}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
