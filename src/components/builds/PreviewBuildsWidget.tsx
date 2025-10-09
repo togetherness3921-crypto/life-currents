@@ -42,11 +42,52 @@ const PreviewBuildsWidget = () => {
     }
   };
 
+  const handleViewPreview = (rawUrl: string) => {
+    const trimmedUrl = (rawUrl ?? '').trim().replace(/'+$/, '');
+    console.debug('[PreviewBuilds] View clicked', {
+      rawUrl,
+      trimmedUrl,
+      locationHref: window.location.href,
+    });
+
+    if (!trimmedUrl) {
+      console.warn('[PreviewBuilds] View aborted because trimmed URL is empty');
+      toast({
+        variant: 'destructive',
+        title: 'Preview unavailable',
+        description: 'Could not open the preview URL because it was empty.',
+      });
+      return;
+    }
+
+    try {
+      window.location.assign(trimmedUrl);
+    } catch (error) {
+      console.error('[PreviewBuilds] Failed to navigate to preview URL', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to open preview',
+        description: error instanceof Error ? error.message : 'Unexpected error when opening preview.',
+      });
+    }
+  };
+
   const handleCommit = async (build: (typeof builds)[number]) => {
+    console.debug('[PreviewBuilds] Commit clicked', {
+      prNumber: build.pr_number,
+      status: build.status,
+      previewUrl: build.preview_url,
+    });
     try {
       await commitBuild(build);
+      console.debug('[PreviewBuilds] Commit completed', { prNumber: build.pr_number });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'An unexpected error occurred while starting the merge.';
+      console.error('[PreviewBuilds] Commit failed', {
+        prNumber: build.pr_number,
+        errorMessage: message,
+        error,
+      });
       toast({
         variant: 'destructive',
         title: 'Failed to dispatch merge workflow',
@@ -126,7 +167,7 @@ const PreviewBuildsWidget = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(build.preview_url, '_blank', 'noopener,noreferrer')}
+                          onClick={() => handleViewPreview(build.preview_url)}
                         >
                           <ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" />
                           View
