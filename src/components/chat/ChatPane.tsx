@@ -43,7 +43,7 @@ const ChatPane = () => {
     const abortControllerRef = useRef<AbortController | null>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
-    const { activeInstruction } = useSystemInstructions();
+    const { activeInstruction, recordInstructionUsage } = useSystemInstructions();
     const { tools: availableTools, callTool } = useMcp();
     const { selectedModel, recordModelUsage, getToolIntentCheck } = useModelSelection();
     const { applyContextToMessages, transforms } = useConversationContext();
@@ -72,6 +72,9 @@ const ChatPane = () => {
 
 
     const submitMessage = async (content: string, threadId: string, parentId: string | null) => {
+        if (activeInstruction?.id) {
+            recordInstructionUsage(activeInstruction.id);
+        }
         setIsLoading(true);
         console.log('[ChatPane] submitMessage called with:', { content, threadId, parentId });
 

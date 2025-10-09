@@ -19,7 +19,8 @@ export interface SystemInstructionsContextValue {
     setActiveInstruction: (id: string) => Promise<void>;
     overwriteActiveInstruction: (content: string) => Promise<void>;
     refreshActiveFromSupabase: () => Promise<void>;
+    recordInstructionUsage: (id: string) => void;
+    getUsageScore: (id: string) => number;
 }
 
 export const SystemInstructionsContext = createContext<SystemInstructionsContextValue | undefined>(undefined);
-
