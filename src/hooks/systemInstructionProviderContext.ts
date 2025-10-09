@@ -13,6 +13,7 @@ export interface SystemInstructionsContextValue {
     activeInstruction: SystemInstruction | null;
     loading: boolean;
     saving: boolean;
+    getUsageScore: (id: string) => number;
     createInstruction: (title: string, content: string, options?: { activate?: boolean }) => Promise<string | null>;
     updateInstruction: (id: string, title: string, content: string, options?: { activate?: boolean }) => Promise<void>;
     deleteInstruction: (id: string) => Promise<void>;
@@ -22,4 +23,3 @@ export interface SystemInstructionsContextValue {
 }
 
 export const SystemInstructionsContext = createContext<SystemInstructionsContextValue | undefined>(undefined);
-
