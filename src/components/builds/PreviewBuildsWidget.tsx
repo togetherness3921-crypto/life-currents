@@ -103,7 +103,7 @@ const PreviewBuildsWidget = () => {
           type="button"
           variant={hasUnseen ? 'default' : 'secondary'}
           className={cn(
-            'fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            'fixed bottom-6 left-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             hasUnseen ? 'animate-[pulse_2s_ease-in-out_infinite]' : 'hover:translate-y-[-2px]'
           )}
           aria-label={buttonLabel}
@@ -154,18 +154,23 @@ const PreviewBuildsWidget = () => {
                     key={build.id ?? build.pr_number}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm transition hover:border-primary/50"
                   >
-                    <a
-                      href={build.pr_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-semibold text-primary underline-offset-4 hover:underline"
-                    >
-                      PR #{build.pr_number}
-                    </a>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <a
+                        href={build.pr_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block truncate font-semibold text-primary underline-offset-4 hover:underline"
+                      >
+                        PR #{build.pr_number}
+                      </a>
+                      {build.preview_url && (
+                        <p className="break-words text-xs text-muted-foreground">{build.preview_url}</p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Button
-                          variant="success"
+                          variant="outline"
                           size="sm"
                           onClick={() => handleViewPreview(build.preview_url)}
                         >
