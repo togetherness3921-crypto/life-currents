@@ -19,7 +19,10 @@ export interface SystemInstructionsContextValue {
     setActiveInstruction: (id: string) => Promise<void>;
     overwriteActiveInstruction: (content: string) => Promise<void>;
     refreshActiveFromSupabase: () => Promise<void>;
+    recordInstructionUsage: (id: string) => void;
+    getUsageCount: (id: string) => number;
+    getUsageScore: (id: string) => number;
+    usageCounts: Record<string, number>;
 }
 
 export const SystemInstructionsContext = createContext<SystemInstructionsContextValue | undefined>(undefined);
-
