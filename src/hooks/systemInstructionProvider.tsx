@@ -12,6 +12,14 @@ interface StoredPreset {
     updatedAt: string;
 }
 
+const USAGE_STORAGE_KEY = 'system_instruction_usage_v1';
+const ROLLING_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+interface InstructionUsageEntry {
+    instructionId: string;
+    timestamp: number;
+}
+
 const DEFAULT_TITLE = 'Current Instruction';
 
 const readLocalPresets = (): StoredPreset[] => {
@@ -37,6 +45,36 @@ const writeLocalPresets = (presets: StoredPreset[]) => {
     }
 };
 
+const readUsageHistory = (): InstructionUsageEntry[] => {
+    if (!isBrowser) return [];
+    try {
+        const raw = window.localStorage.getItem(USAGE_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(
+            (entry) => typeof entry?.instructionId === 'string' && typeof entry?.timestamp === 'number',
+        );
+    } catch (error) {
+        console.warn('[SystemInstructions] Failed to read usage history', error);
+        return [];
+    }
+};
+
+const writeUsageHistory = (history: InstructionUsageEntry[]) => {
+    if (!isBrowser) return;
+    try {
+        window.localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(history));
+    } catch (error) {
+        console.warn('[SystemInstructions] Failed to write usage history', error);
+    }
+};
+
+const pruneUsageHistory = (history: InstructionUsageEntry[]): InstructionUsageEntry[] => {
+    const cutoff = Date.now() - ROLLING_WINDOW_MS;
+    return history.filter((entry) => entry.timestamp >= cutoff);
+};
+
 const generateId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -49,10 +87,50 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
     const [activeInstructionId, setActiveInstructionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [usageHistory, setUsageHistory] = useState<InstructionUsageEntry[]>(() =>
+        pruneUsageHistory(readUsageHistory()),
+    );
 
     useEffect(() => {
         writeLocalPresets(presets);
     }, [presets]);
+
+    useEffect(() => {
+        writeUsageHistory(usageHistory);
+    }, [usageHistory]);
+
+    const recordInstructionUsage = useCallback((instructionId: string) => {
+        if (!instructionId) return;
+        setUsageHistory((previous) =>
+            pruneUsageHistory([
+                ...previous,
+                {
+                    instructionId,
+                    timestamp: Date.now(),
+                },
+            ]),
+        );
+    }, []);
+
+    const usageCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+
+        for (const preset of presets) {
+            counts[preset.id] = Math.max(counts[preset.id] ?? 0, 1);
+        }
+
+        for (const entry of usageHistory) {
+            if (!counts[entry.instructionId]) {
+                // Ensure deleted instructions don't inflate counts for unrelated IDs.
+                counts[entry.instructionId] = 1;
+            }
+            counts[entry.instructionId] += 1;
+        }
+
+        return counts;
+    }, [presets, usageHistory]);
+
+    const getUsageScore = useCallback((instructionId: string) => usageCounts[instructionId] ?? 0, [usageCounts]);
 
     const refreshActiveFromSupabase = useCallback(async () => {
         setLoading(true);
@@ -125,10 +203,11 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         if (options?.activate) {
             setActiveInstructionId(id);
             await persistToSupabase(content);
+            recordInstructionUsage(id);
         }
 
         return id;
-    }, [persistToSupabase, presets.length]);
+    }, [persistToSupabase, presets.length, recordInstructionUsage]);
 
     const updateInstruction = useCallback<
         SystemInstructionsContextValue['updateInstruction']
@@ -143,8 +222,9 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         if (shouldActivate) {
             setActiveInstructionId(id);
             await persistToSupabase(content);
+            recordInstructionUsage(id);
         }
-    }, [activeInstructionId, persistToSupabase]);
+    }, [activeInstructionId, persistToSupabase, recordInstructionUsage]);
 
     const deleteInstruction = useCallback<SystemInstructionsContextValue['deleteInstruction']>(async (id) => {
         setPresets((prev) => prev.filter((preset) => preset.id !== id));
@@ -158,7 +238,8 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         if (!preset) return;
         setActiveInstructionId(id);
         await persistToSupabase(preset.content);
-    }, [presets, persistToSupabase]);
+        recordInstructionUsage(id);
+    }, [presets, persistToSupabase, recordInstructionUsage]);
 
     const overwriteActiveInstruction = useCallback<SystemInstructionsContextValue['overwriteActiveInstruction']>(async (content) => {
         if (!activeInstructionId) return;
@@ -196,8 +277,24 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
             setActiveInstruction,
             overwriteActiveInstruction,
             refreshActiveFromSupabase,
+            getUsageScore,
+            recordInstructionUsage,
         };
-    }, [activeInstruction, activeInstructionId, createInstruction, deleteInstruction, loading, overwriteActiveInstruction, presets, refreshActiveFromSupabase, saving, setActiveInstruction, updateInstruction]);
+    }, [
+        activeInstruction,
+        activeInstructionId,
+        createInstruction,
+        deleteInstruction,
+        getUsageScore,
+        loading,
+        overwriteActiveInstruction,
+        presets,
+        recordInstructionUsage,
+        refreshActiveFromSupabase,
+        saving,
+        setActiveInstruction,
+        updateInstruction,
+    ]);
 
     return (
         <SystemInstructionsContext.Provider value={contextValue}>
@@ -205,4 +302,3 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
         </SystemInstructionsContext.Provider>
     );
 };
-

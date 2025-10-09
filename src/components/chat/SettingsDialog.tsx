@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import {
     Dialog,
@@ -21,6 +21,8 @@ import type { ConversationContextMode } from '@/hooks/conversationContextProvide
 import useModelSelection from '@/hooks/useModelSelection';
 import { getAvailableModels, type ModelInfo } from '@/services/openRouter';
 import { Toggle } from '@/components/ui/toggle';
+import { Check, Pin, Plus, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface SettingsDialogProps {
     open: boolean;
@@ -41,8 +43,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         updateInstruction,
         createInstruction,
         deleteInstruction,
-        overwriteActiveInstruction,
+        getUsageScore: getInstructionUsageScore,
     } = useSystemInstructions();
+    const { toast } = useToast();
     const {
         mode,
         setMode,
@@ -52,16 +55,19 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     const {
         selectedModel,
         setSelectedModel,
-        getUsageScore,
+        getUsageScore: getModelUsageScore,
         getToolIntentCheck,
         setToolIntentCheck,
     } = useModelSelection();
 
     const [selectedInstructionId, setSelectedInstructionId] = useState<string | null>(null);
+    const [isCreatingNew, setIsCreatingNew] = useState(false);
+    const [titleEditing, setTitleEditing] = useState(false);
+    const [contentEditing, setContentEditing] = useState(false);
     const [localTitle, setLocalTitle] = useState('');
     const [localContent, setLocalContent] = useState('');
-    const [isEditingExisting, setIsEditingExisting] = useState(false);
-    const [isCreatingNew, setIsCreatingNew] = useState(false);
+    const titleRef = useRef<HTMLInputElement | null>(null);
+    const contentRef = useRef<HTMLTextAreaElement | null>(null);
     const [activeTab, setActiveTab] = useState<'system' | 'context' | 'model'>('system');
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [modelSearchTerm, setModelSearchTerm] = useState('');
@@ -98,95 +104,203 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         };
     }, [activeTab, modelsLoaded, open]);
 
-    const selectedInstruction = useMemo(() => {
+    const sortedInstructions = useMemo(() => {
+        const ordered = [...instructions];
+        ordered.sort((a, b) => {
+            const usageDelta = getInstructionUsageScore(b.id) - getInstructionUsageScore(a.id);
+            if (usageDelta !== 0) {
+                return usageDelta;
+            }
+            const updatedDelta = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+            if (!Number.isNaN(updatedDelta) && updatedDelta !== 0) {
+                return updatedDelta;
+            }
+            return a.title.localeCompare(b.title);
+        });
+        return ordered;
+    }, [getInstructionUsageScore, instructions]);
+
+    const resolvedInstruction = useMemo(() => {
         if (isCreatingNew) {
             return null;
         }
         const targetId = selectedInstructionId ?? activeInstructionId;
-        return instructions.find((instruction) => instruction.id === targetId) ?? activeInstruction;
+        if (!targetId) {
+            return activeInstruction;
+        }
+        return instructions.find((instruction) => instruction.id === targetId) ?? activeInstruction ?? null;
     }, [activeInstruction, activeInstructionId, instructions, isCreatingNew, selectedInstructionId]);
 
-    const displayTitle = isEditingExisting
-        ? localTitle
-        : selectedInstruction?.title ?? activeInstruction?.title ?? '';
+    useEffect(() => {
+        if (isCreatingNew) {
+            return;
+        }
+        if (resolvedInstruction) {
+            setLocalTitle(resolvedInstruction.title);
+            setLocalContent(resolvedInstruction.content);
+        } else {
+            setLocalTitle('');
+            setLocalContent('');
+        }
+        setTitleEditing(false);
+        setContentEditing(false);
+    }, [isCreatingNew, resolvedInstruction?.content, resolvedInstruction?.id, resolvedInstruction?.title]);
 
-    const displayContent = isEditingExisting
-        ? localContent
-        : selectedInstruction?.content ?? activeInstruction?.content ?? '';
+    useEffect(() => {
+        if (titleEditing && titleRef.current) {
+            titleRef.current.focus();
+            titleRef.current.select();
+        }
+    }, [titleEditing]);
 
-    const resetForm = () => {
+    useEffect(() => {
+        if (contentEditing && contentRef.current) {
+            contentRef.current.focus();
+        }
+    }, [contentEditing]);
+
+    const resetInstructionForm = () => {
         setSelectedInstructionId(null);
+        setIsCreatingNew(false);
+        setTitleEditing(false);
+        setContentEditing(false);
         setLocalTitle('');
         setLocalContent('');
-        setIsEditingExisting(false);
-        setIsCreatingNew(false);
+    };
+
+    const resetDialogState = () => {
+        resetInstructionForm();
         setActiveTab('system');
         setModelSearchTerm('');
     };
 
-    const handleSelectInstruction = (id: string) => {
-        setSelectedInstructionId(id);
+    const handleSelectInstruction = async (id: string) => {
         const instruction = instructions.find((item) => item.id === id);
         if (!instruction) return;
+        setIsCreatingNew(false);
+        setSelectedInstructionId(id);
         setLocalTitle(instruction.title);
         setLocalContent(instruction.content);
-        setIsEditingExisting(false);
-        setIsCreatingNew(false);
+        setTitleEditing(false);
+        setContentEditing(false);
+        if (id !== activeInstructionId) {
+            try {
+                await setActiveInstruction(id);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Unable to activate instruction.';
+                toast({
+                    variant: 'destructive',
+                    title: 'Failed to activate instruction',
+                    description: message,
+                });
+            }
+        }
     };
 
-    const handleCreateNew = () => {
-        setSelectedInstructionId(null);
-        setLocalTitle('Untitled Instruction');
-        setLocalContent(activeInstruction?.content ?? '');
+    const handleStartCreate = () => {
+        setActiveTab('system');
         setIsCreatingNew(true);
-        setIsEditingExisting(true);
-        setActiveTab('system');
+        setSelectedInstructionId(null);
+        setLocalTitle('');
+        setLocalContent('');
+        setTitleEditing(true);
+        setContentEditing(true);
     };
 
-    const handleEdit = () => {
-        if (!selectedInstruction) return;
-        setLocalTitle(selectedInstruction.title);
-        setLocalContent(selectedInstruction.content);
-        setIsEditingExisting(true);
-        setActiveTab('system');
+    const handleCancelEditing = () => {
+        if (isCreatingNew) {
+            resetInstructionForm();
+            return;
+        }
+        if (resolvedInstruction) {
+            setLocalTitle(resolvedInstruction.title);
+            setLocalContent(resolvedInstruction.content);
+        } else {
+            setLocalTitle('');
+            setLocalContent('');
+        }
+        setTitleEditing(false);
+        setContentEditing(false);
     };
 
-    const handleCancelEdit = () => {
-        resetForm();
-    };
+    const baseTitle = isCreatingNew ? '' : resolvedInstruction?.title ?? '';
+    const baseContent = isCreatingNew ? '' : resolvedInstruction?.content ?? '';
+
+    const hasChanges = isCreatingNew
+        ? localTitle.trim().length > 0 || localContent.trim().length > 0
+        : localTitle !== baseTitle || localContent !== baseContent;
+
+    const canSave = localTitle.trim().length > 0 && localContent.trim().length > 0 && (isCreatingNew || hasChanges);
 
     const handleSave = async () => {
+        if (!canSave) return;
         if (isCreatingNew) {
-            const newId = await createInstruction(localTitle, localContent, { activate: true });
-            setSelectedInstructionId(newId);
-        } else if (selectedInstruction) {
-            await updateInstruction(selectedInstruction.id, localTitle, localContent, { activate: true });
-        } else if (activeInstructionId) {
-            await overwriteActiveInstruction(localContent);
+            try {
+                const newId = await createInstruction(localTitle.trim(), localContent.trim(), { activate: true });
+                if (newId) {
+                    setSelectedInstructionId(newId);
+                    setIsCreatingNew(false);
+                }
+            } catch (error) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Failed to create instruction',
+                    description: error instanceof Error ? error.message : 'Unexpected error while creating.',
+                });
+                return;
+            }
+        } else if (resolvedInstruction) {
+            try {
+                await updateInstruction(resolvedInstruction.id, localTitle.trim(), localContent.trim(), { activate: true });
+            } catch (error) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Failed to save instruction',
+                    description: error instanceof Error ? error.message : 'Unexpected error while saving.',
+                });
+                return;
+            }
         }
-        setIsEditingExisting(false);
-        setIsCreatingNew(false);
-    };
-
-    const handleActivate = async () => {
-        const target = selectedInstruction ?? activeInstruction;
-        if (!target) return;
-        await setActiveInstruction(target.id);
-        onOpenChange(false);
-        resetForm();
+        setTitleEditing(false);
+        setContentEditing(false);
     };
 
     const handleDelete = async () => {
-        const target = selectedInstruction ?? activeInstruction;
-        if (!target) return;
-        if (instructions.length <= 1) return;
-        await deleteInstruction(target.id);
-        resetForm();
+        if (isCreatingNew) {
+            resetInstructionForm();
+            return;
+        }
+
+        const targetId = resolvedInstruction?.id;
+        if (!targetId) {
+            return;
+        }
+
+        if (instructions.length <= 1) {
+            toast({
+                variant: 'destructive',
+                title: 'Cannot delete instruction',
+                description: 'At least one instruction must remain available.',
+            });
+            return;
+        }
+
+        const confirmed = window.confirm('Delete this instruction? This cannot be undone.');
+        if (!confirmed) return;
+
+        try {
+            await deleteInstruction(targetId);
+            resetInstructionForm();
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Failed to delete instruction',
+                description: error instanceof Error ? error.message : 'Unexpected error while deleting.',
+            });
+        }
     };
 
-    const isActive = selectedInstruction?.id === activeInstructionId || (!selectedInstruction && selectedInstructionId === null);
-
-    const canSave = localContent.trim().length > 0;
+    const isActiveInstruction = resolvedInstruction?.id === activeInstructionId;
 
     const applyCustomCount = (value: number) => {
         const clamped = Math.min(CUSTOM_MAX, Math.max(CUSTOM_MIN, Math.round(value)));
@@ -213,7 +327,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         const normalizedSearch = modelSearchTerm.trim().toLowerCase();
         const entries = combinedModels.map((model) => ({
             model,
-            score: getUsageScore(model.id),
+            score: getModelUsageScore(model.id),
         }));
 
         entries.sort((a, b) => b.score - a.score || a.model.name.localeCompare(b.model.name));
@@ -228,14 +342,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                 entry.model.id.toLowerCase().includes(normalizedSearch)
             )
             .map((entry) => entry.model);
-    }, [combinedModels, getUsageScore, modelSearchTerm]);
+    }, [combinedModels, getModelUsageScore, modelSearchTerm]);
 
     return (
         <Dialog
             open={open}
             onOpenChange={(nextOpen) => {
                 if (!nextOpen) {
-                    resetForm();
+                    resetDialogState();
                 }
                 onOpenChange(nextOpen);
             }}
@@ -250,93 +364,159 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                 </DialogHeader>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'system' | 'context' | 'model')}>
                     <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="system">System Instructions</TabsTrigger>
+                        <TabsTrigger value="system">Instructions</TabsTrigger>
                         <TabsTrigger value="context">Context</TabsTrigger>
                         <TabsTrigger value="model">Model</TabsTrigger>
                     </TabsList>
                     <TabsContent value="system" className="mt-6">
-                        <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-                            <div className="flex flex-col gap-4 border-r pr-4">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-sm font-medium">Saved Instructions</p>
-                                    <Button size="sm" variant="ghost" onClick={handleCreateNew}>
-                                        New
-                                    </Button>
-                                </div>
-                                <ScrollArea className="flex-1">
-                                    <div className="flex flex-col gap-2">
-                                        {instructions.map((instruction) => (
-                                            <button
-                                                key={instruction.id}
-                                                type="button"
-                                                onClick={() => handleSelectInstruction(instruction.id)}
-                                                className={cn(
-                                                    'rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
-                                                    instruction.id === (selectedInstructionId ?? activeInstructionId)
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'border-transparent'
-                                                )}
-                                            >
-                                                <p className="font-medium">{instruction.title}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {instruction.updatedAt ? new Date(instruction.updatedAt).toLocaleString() : ''}
-                                                </p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </ScrollArea>
-                            </div>
-                            <div className="flex flex-col gap-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <p className="text-sm font-medium">
-                                            {selectedInstruction?.title || (isCreatingNew ? 'New Instruction' : activeInstruction?.title) || 'No instruction selected'}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {isActive ? 'Active instruction' : 'Inactive'}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {!isEditingExisting && !loading && (
-                                            <Button size="sm" variant="outline" onClick={handleEdit} disabled={!selectedInstruction && !activeInstruction}>
-                                                Edit
-                                            </Button>
-                                        )}
-                                        <Button size="sm" onClick={handleActivate} disabled={!selectedInstruction && !activeInstruction}>
-                                            Use This Instruction
-                                        </Button>
-                                        <Button size="sm" variant="destructive" onClick={handleDelete} disabled={!selectedInstruction && !activeInstruction}>
-                                            Delete
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            value={displayTitle}
-                                            onChange={(event) => setLocalTitle(event.target.value)}
-                                            placeholder="Instruction title"
-                                            disabled={!isEditingExisting}
-                                        />
-                                        {isEditingExisting && (
-                                            <div className="flex gap-2">
-                                                <Button size="sm" variant="outline" onClick={handleCancelEdit}>
-                                                    Cancel
-                                                </Button>
-                                                <Button size="sm" onClick={handleSave} disabled={!canSave || saving}>
-                                                    {saving ? 'Saving...' : 'Save & Activate'}
-                                                </Button>
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleStartCreate}
+                                    className="flex h-10 w-full items-center justify-center rounded-md border border-dashed text-sm transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    aria-label="Create instruction"
+                                >
+                                    <Plus className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <ScrollArea className="max-h-56 rounded-md border">
+                                    <div className="flex flex-col divide-y">
+                                        {sortedInstructions.map((instruction) => {
+                                            const isSelected = instruction.id === (selectedInstructionId ?? activeInstructionId);
+                                            const isActive = instruction.id === activeInstructionId;
+                                            return (
+                                                <button
+                                                    key={instruction.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectInstruction(instruction.id)}
+                                                    className={cn(
+                                                        'flex items-center justify-between gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/80',
+                                                        isSelected ? 'bg-primary/10' : ''
+                                                    )}
+                                                >
+                                                    <span className="truncate font-medium">
+                                                        {instruction.title || 'Untitled Instruction'}
+                                                    </span>
+                                                    {isActive && <Check className="h-4 w-4 text-primary" aria-hidden="true" />}
+                                                </button>
+                                            );
+                                        })}
+                                        {sortedInstructions.length === 0 && (
+                                            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                                                No instructions saved yet.
                                             </div>
                                         )}
                                     </div>
-                                    <Textarea
-                                        value={displayContent}
-                                        onChange={(event) => setLocalContent(event.target.value)}
-                                        rows={10}
-                                        disabled={!isEditingExisting}
-                                        className="h-48 resize-none overflow-y-auto font-mono text-sm"
-                                    />
-                                </div>
+                                </ScrollArea>
+                            </div>
+                            <div className="space-y-4 rounded-md border bg-card/60 p-4">
+                                {loading ? (
+                                    <div className="py-10 text-center text-sm text-muted-foreground">Loading instructions…</div>
+                                ) : (
+                                    <>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-semibold">
+                                                    {isCreatingNew
+                                                        ? 'New Instruction'
+                                                        : resolvedInstruction?.title || 'Select an instruction'}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {isCreatingNew
+                                                        ? 'Draft'
+                                                        : isActiveInstruction
+                                                            ? 'Active instruction'
+                                                            : resolvedInstruction
+                                                                ? 'Inactive'
+                                                                : 'Nothing selected'}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={handleDelete}
+                                                disabled={(!isCreatingNew && instructions.length <= 1) || (!isCreatingNew && !resolvedInstruction)}
+                                            >
+                                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                                <span className="sr-only">Delete instruction</span>
+                                            </Button>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="instruction-title">Title</Label>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => setTitleEditing(true)}
+                                                        disabled={titleEditing || (!isCreatingNew && !resolvedInstruction)}
+                                                    >
+                                                        <Pin className="h-4 w-4" aria-hidden="true" />
+                                                        <span className="sr-only">Edit title</span>
+                                                    </Button>
+                                                </div>
+                                                <Input
+                                                    id="instruction-title"
+                                                    ref={titleRef}
+                                                    value={localTitle}
+                                                    onChange={(event) => setLocalTitle(event.target.value)}
+                                                    placeholder="Instruction title"
+                                                    readOnly={!titleEditing && !isCreatingNew}
+                                                    aria-readonly={!titleEditing && !isCreatingNew}
+                                                    className={cn(
+                                                        !titleEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
+                                                    )}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="instruction-content">Text Content</Label>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => setContentEditing(true)}
+                                                        disabled={contentEditing || (!isCreatingNew && !resolvedInstruction)}
+                                                    >
+                                                        <Pin className="h-4 w-4" aria-hidden="true" />
+                                                        <span className="sr-only">Edit content</span>
+                                                    </Button>
+                                                </div>
+                                                <Textarea
+                                                    id="instruction-content"
+                                                    ref={contentRef}
+                                                    value={localContent}
+                                                    onChange={(event) => setLocalContent(event.target.value)}
+                                                    rows={10}
+                                                    readOnly={!contentEditing && !isCreatingNew}
+                                                    aria-readonly={!contentEditing && !isCreatingNew}
+                                                    className={cn(
+                                                        'h-48 resize-y font-mono text-sm',
+                                                        !contentEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
+                                                    )}
+                                                />
+                                            </div>
+                                        </div>
+                                        {(isCreatingNew || titleEditing || contentEditing || hasChanges) && (
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleCancelEditing}
+                                                    disabled={saving}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button type="button" size="sm" onClick={handleSave} disabled={!canSave || saving}>
+                                                    {saving ? 'Saving…' : isCreatingNew ? 'Create & Activate' : 'Save Changes'}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </div>
                     </TabsContent>
