@@ -1,0 +1,69 @@
+﻿2025-10-09T20:33:37.1659572Z ##[group]Run actions/checkout@v4
+2025-10-09T20:33:37.1660425Z with:
+2025-10-09T20:33:37.1661186Z   repository: togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.1661981Z   token: ***
+2025-10-09T20:33:37.1662401Z   ssh-strict: true
+2025-10-09T20:33:37.1662816Z   ssh-user: git
+2025-10-09T20:33:37.1663240Z   persist-credentials: true
+2025-10-09T20:33:37.1663708Z   clean: true
+2025-10-09T20:33:37.1664121Z   sparse-checkout-cone-mode: true
+2025-10-09T20:33:37.1664621Z   fetch-depth: 1
+2025-10-09T20:33:37.1665031Z   fetch-tags: false
+2025-10-09T20:33:37.1665453Z   show-progress: true
+2025-10-09T20:33:37.1665963Z   lfs: false
+2025-10-09T20:33:37.1666354Z   submodules: false
+2025-10-09T20:33:37.1666772Z   set-safe-directory: true
+2025-10-09T20:33:37.1667551Z ##[endgroup]
+2025-10-09T20:33:37.2713495Z Syncing repository: togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.2715335Z ##[group]Getting Git version info
+2025-10-09T20:33:37.2716098Z Working directory is '/home/runner/work/life-currents/life-currents'
+2025-10-09T20:33:37.2717314Z [command]/usr/bin/git version
+2025-10-09T20:33:37.2788838Z git version 2.51.0
+2025-10-09T20:33:37.2815484Z ##[endgroup]
+2025-10-09T20:33:37.2829280Z Temporarily overriding HOME='/home/runner/work/_temp/c6834743-8211-4a2a-a9f0-fa223ed2cdab' before making global git config changes
+2025-10-09T20:33:37.2831945Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-09T20:33:37.2843536Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/life-currents/life-currents
+2025-10-09T20:33:37.2884524Z Deleting the contents of '/home/runner/work/life-currents/life-currents'
+2025-10-09T20:33:37.2887917Z ##[group]Initializing the repository
+2025-10-09T20:33:37.2891894Z [command]/usr/bin/git init /home/runner/work/life-currents/life-currents
+2025-10-09T20:33:37.3019883Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-10-09T20:33:37.3022123Z hint: is subject to change. To configure the initial branch name to use in all
+2025-10-09T20:33:37.3023977Z hint: of your new repositories, which will suppress this warning, call:
+2025-10-09T20:33:37.3025195Z hint:
+2025-10-09T20:33:37.3026418Z hint: 	git config --global init.defaultBranch <name>
+2025-10-09T20:33:37.3027516Z hint:
+2025-10-09T20:33:37.3028501Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-10-09T20:33:37.3030095Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-10-09T20:33:37.3031568Z hint:
+2025-10-09T20:33:37.3032316Z hint: 	git branch -m <name>
+2025-10-09T20:33:37.3033116Z hint:
+2025-10-09T20:33:37.3034196Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-10-09T20:33:37.3035936Z Initialized empty Git repository in /home/runner/work/life-currents/life-currents/.git/
+2025-10-09T20:33:37.3039007Z [command]/usr/bin/git remote add origin https://github.com/togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.3077845Z ##[endgroup]
+2025-10-09T20:33:37.3079169Z ##[group]Disabling automatic garbage collection
+2025-10-09T20:33:37.3081397Z [command]/usr/bin/git config --local gc.auto 0
+2025-10-09T20:33:37.3112229Z ##[endgroup]
+2025-10-09T20:33:37.3113524Z ##[group]Setting up auth
+2025-10-09T20:33:37.3118944Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-10-09T20:33:37.3150142Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-10-09T20:33:37.3498227Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-09T20:33:37.3527915Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-10-09T20:33:37.3754501Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-10-09T20:33:37.3787369Z ##[endgroup]
+2025-10-09T20:33:37.3803795Z ##[group]Fetching the repository
+2025-10-09T20:33:37.3806135Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9326ebd331c1a2735602a654d2367c79f060159a:refs/remotes/origin/main
+2025-10-09T20:33:37.7396606Z From https://github.com/togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.7398546Z  * [new ref]         9326ebd331c1a2735602a654d2367c79f060159a -> origin/main
+2025-10-09T20:33:37.7430102Z ##[endgroup]
+2025-10-09T20:33:37.7431753Z ##[group]Determining the checkout info
+2025-10-09T20:33:37.7433338Z ##[endgroup]
+2025-10-09T20:33:37.7438464Z [command]/usr/bin/git sparse-checkout disable
+2025-10-09T20:33:37.7483926Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-10-09T20:33:37.7514070Z ##[group]Checking out the ref
+2025-10-09T20:33:37.7518298Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2025-10-09T20:33:37.9010705Z Switched to a new branch 'main'
+2025-10-09T20:33:37.9012658Z branch 'main' set up to track 'origin/main'.
+2025-10-09T20:33:37.9022155Z ##[endgroup]
+2025-10-09T20:33:37.9059186Z [command]/usr/bin/git log -1 --format=%H
+2025-10-09T20:33:37.9081249Z 9326ebd331c1a2735602a654d2367c79f060159a

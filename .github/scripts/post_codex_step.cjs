@@ -16,8 +16,8 @@ function setActionOutput(name, value) {
 
 async function fetchJson(url, options = {}) {
   const headers = {
-    Authorization: `Bearer ${process.env.GH_TOKEN}`,
-    Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+      Accept: 'application/vnd.github+json',
     ...options.headers,
   };
 
@@ -216,8 +216,8 @@ async function tryTimelinePreview(baseUrl, prNumber) {
   const url = extractPreviewUrl(timelineComment.body);
   if (url) {
     console.log('Extracted preview URL from PR timeline event.');
-    return url;
-  }
+      return url;
+    }
 
   console.log('Cloudflare timeline event located but did not contain a preview URL.');
   return null;

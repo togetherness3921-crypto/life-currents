@@ -1,0 +1,154 @@
+﻿2025-10-09T20:33:36.3209253Z Current runner version: '2.328.0'
+2025-10-09T20:33:36.3241097Z ##[group]Runner Image Provisioner
+2025-10-09T20:33:36.3242438Z Hosted Compute Agent
+2025-10-09T20:33:36.3243354Z Version: 20250912.392
+2025-10-09T20:33:36.3244427Z Commit: d921fda672a98b64f4f82364647e2f10b2267d0b
+2025-10-09T20:33:36.3245572Z Build Date: 2025-09-12T15:23:14Z
+2025-10-09T20:33:36.3246542Z ##[endgroup]
+2025-10-09T20:33:36.3247445Z ##[group]Operating System
+2025-10-09T20:33:36.3248477Z Ubuntu
+2025-10-09T20:33:36.3249170Z 24.04.3
+2025-10-09T20:33:36.3249951Z LTS
+2025-10-09T20:33:36.3251056Z ##[endgroup]
+2025-10-09T20:33:36.3251900Z ##[group]Runner Image
+2025-10-09T20:33:36.3252712Z Image: ubuntu-24.04
+2025-10-09T20:33:36.3253670Z Version: 20250929.60.1
+2025-10-09T20:33:36.3255409Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250929.60/images/ubuntu/Ubuntu2404-Readme.md
+2025-10-09T20:33:36.3258208Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250929.60
+2025-10-09T20:33:36.3259837Z ##[endgroup]
+2025-10-09T20:33:36.3262020Z ##[group]GITHUB_TOKEN Permissions
+2025-10-09T20:33:36.3264496Z Contents: write
+2025-10-09T20:33:36.3265549Z Metadata: read
+2025-10-09T20:33:36.3266367Z PullRequests: write
+2025-10-09T20:33:36.3267409Z ##[endgroup]
+2025-10-09T20:33:36.3270177Z Secret source: Actions
+2025-10-09T20:33:36.3271513Z Prepare workflow directory
+2025-10-09T20:33:36.4096497Z Prepare all required actions
+2025-10-09T20:33:36.4151399Z Getting action download info
+2025-10-09T20:33:36.7049660Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+2025-10-09T20:33:36.8743580Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2025-10-09T20:33:37.0995374Z Complete job name: merge-and-update
+2025-10-09T20:33:37.1659591Z ##[group]Run actions/checkout@v4
+2025-10-09T20:33:37.1660434Z with:
+2025-10-09T20:33:37.1661199Z   repository: togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.1661985Z   token: ***
+2025-10-09T20:33:37.1662404Z   ssh-strict: true
+2025-10-09T20:33:37.1662819Z   ssh-user: git
+2025-10-09T20:33:37.1663243Z   persist-credentials: true
+2025-10-09T20:33:37.1663710Z   clean: true
+2025-10-09T20:33:37.1664124Z   sparse-checkout-cone-mode: true
+2025-10-09T20:33:37.1664624Z   fetch-depth: 1
+2025-10-09T20:33:37.1665033Z   fetch-tags: false
+2025-10-09T20:33:37.1665456Z   show-progress: true
+2025-10-09T20:33:37.1665966Z   lfs: false
+2025-10-09T20:33:37.1666357Z   submodules: false
+2025-10-09T20:33:37.1666774Z   set-safe-directory: true
+2025-10-09T20:33:37.1667559Z ##[endgroup]
+2025-10-09T20:33:37.2713543Z Syncing repository: togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.2715351Z ##[group]Getting Git version info
+2025-10-09T20:33:37.2716166Z Working directory is '/home/runner/work/life-currents/life-currents'
+2025-10-09T20:33:37.2717320Z [command]/usr/bin/git version
+2025-10-09T20:33:37.2788866Z git version 2.51.0
+2025-10-09T20:33:37.2815516Z ##[endgroup]
+2025-10-09T20:33:37.2829308Z Temporarily overriding HOME='/home/runner/work/_temp/c6834743-8211-4a2a-a9f0-fa223ed2cdab' before making global git config changes
+2025-10-09T20:33:37.2831965Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-09T20:33:37.2843566Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/life-currents/life-currents
+2025-10-09T20:33:37.2884549Z Deleting the contents of '/home/runner/work/life-currents/life-currents'
+2025-10-09T20:33:37.2887932Z ##[group]Initializing the repository
+2025-10-09T20:33:37.2891908Z [command]/usr/bin/git init /home/runner/work/life-currents/life-currents
+2025-10-09T20:33:37.3019913Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-10-09T20:33:37.3022175Z hint: is subject to change. To configure the initial branch name to use in all
+2025-10-09T20:33:37.3024002Z hint: of your new repositories, which will suppress this warning, call:
+2025-10-09T20:33:37.3025217Z hint:
+2025-10-09T20:33:37.3026436Z hint: 	git config --global init.defaultBranch <name>
+2025-10-09T20:33:37.3027536Z hint:
+2025-10-09T20:33:37.3028524Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-10-09T20:33:37.3030106Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-10-09T20:33:37.3031591Z hint:
+2025-10-09T20:33:37.3032328Z hint: 	git branch -m <name>
+2025-10-09T20:33:37.3033127Z hint:
+2025-10-09T20:33:37.3034209Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-10-09T20:33:37.3035951Z Initialized empty Git repository in /home/runner/work/life-currents/life-currents/.git/
+2025-10-09T20:33:37.3039033Z [command]/usr/bin/git remote add origin https://github.com/togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.3077886Z ##[endgroup]
+2025-10-09T20:33:37.3079186Z ##[group]Disabling automatic garbage collection
+2025-10-09T20:33:37.3081425Z [command]/usr/bin/git config --local gc.auto 0
+2025-10-09T20:33:37.3112255Z ##[endgroup]
+2025-10-09T20:33:37.3113545Z ##[group]Setting up auth
+2025-10-09T20:33:37.3118971Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-10-09T20:33:37.3150171Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-10-09T20:33:37.3498269Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-09T20:33:37.3527940Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-10-09T20:33:37.3754807Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-10-09T20:33:37.3787389Z ##[endgroup]
+2025-10-09T20:33:37.3803819Z ##[group]Fetching the repository
+2025-10-09T20:33:37.3806153Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9326ebd331c1a2735602a654d2367c79f060159a:refs/remotes/origin/main
+2025-10-09T20:33:37.7396683Z From https://github.com/togetherness3921-crypto/life-currents
+2025-10-09T20:33:37.7398582Z  * [new ref]         9326ebd331c1a2735602a654d2367c79f060159a -> origin/main
+2025-10-09T20:33:37.7430134Z ##[endgroup]
+2025-10-09T20:33:37.7431782Z ##[group]Determining the checkout info
+2025-10-09T20:33:37.7433359Z ##[endgroup]
+2025-10-09T20:33:37.7438491Z [command]/usr/bin/git sparse-checkout disable
+2025-10-09T20:33:37.7483956Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-10-09T20:33:37.7514104Z ##[group]Checking out the ref
+2025-10-09T20:33:37.7518382Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2025-10-09T20:33:37.9011119Z Switched to a new branch 'main'
+2025-10-09T20:33:37.9012685Z branch 'main' set up to track 'origin/main'.
+2025-10-09T20:33:37.9022176Z ##[endgroup]
+2025-10-09T20:33:37.9059220Z [command]/usr/bin/git log -1 --format=%H
+2025-10-09T20:33:37.9081321Z 9326ebd331c1a2735602a654d2367c79f060159a
+2025-10-09T20:33:37.9376884Z ##[group]Run actions/setup-node@v4
+2025-10-09T20:33:37.9378014Z with:
+2025-10-09T20:33:37.9378842Z   node-version: 18
+2025-10-09T20:33:37.9379753Z   always-auth: false
+2025-10-09T20:33:37.9380692Z   check-latest: false
+2025-10-09T20:33:37.9382048Z   token: ***
+2025-10-09T20:33:37.9382896Z ##[endgroup]
+2025-10-09T20:33:38.1435556Z Found in cache @ /opt/hostedtoolcache/node/18.20.8/x64
+2025-10-09T20:33:38.1441060Z ##[group]Environment details
+2025-10-09T20:33:41.0946537Z node: v18.20.8
+2025-10-09T20:33:41.0947141Z npm: 10.8.2
+2025-10-09T20:33:41.0947768Z yarn: 1.22.22
+2025-10-09T20:33:41.0949480Z ##[endgroup]
+2025-10-09T20:33:41.1049377Z ##[group]Run npm ci
+2025-10-09T20:33:41.1049685Z [36;1mnpm ci[0m
+2025-10-09T20:33:41.1207897Z shell: /usr/bin/bash -e {0}
+2025-10-09T20:33:41.1208202Z ##[endgroup]
+2025-10-09T20:33:49.3260066Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2025-10-09T20:33:49.5763587Z npm warn deprecated @types/uuid@11.0.0: This is a stub types definition. uuid provides its own type definitions, so you do not need this installed.
+2025-10-09T20:33:55.9941173Z 
+2025-10-09T20:33:55.9942399Z added 460 packages, and audited 461 packages in 15s
+2025-10-09T20:33:55.9942933Z 
+2025-10-09T20:33:55.9943256Z 87 packages are looking for funding
+2025-10-09T20:33:55.9943817Z   run `npm fund` for details
+2025-10-09T20:33:56.0053266Z 
+2025-10-09T20:33:56.0053678Z 2 moderate severity vulnerabilities
+2025-10-09T20:33:56.0054137Z 
+2025-10-09T20:33:56.0054397Z To address all issues, run:
+2025-10-09T20:33:56.0054974Z   npm audit fix
+2025-10-09T20:33:56.0058533Z 
+2025-10-09T20:33:56.0059097Z Run `npm audit` for details.
+2025-10-09T20:33:56.0479152Z ##[group]Run echo "Merging PR #116"
+2025-10-09T20:33:56.0479497Z [36;1mecho "Merging PR #116"[0m
+2025-10-09T20:33:56.0479809Z [36;1mgh pr merge 116 --merge --delete-branch --admin[0m
+2025-10-09T20:33:56.0480149Z [36;1mecho "PR merge successful."[0m
+2025-10-09T20:33:56.0522068Z shell: /usr/bin/bash -e {0}
+2025-10-09T20:33:56.0522433Z env:
+2025-10-09T20:33:56.0522964Z   GH_TOKEN: ***
+2025-10-09T20:33:56.0523262Z ##[endgroup]
+2025-10-09T20:33:56.0589021Z Merging PR #116
+2025-10-09T20:33:57.2569584Z GraphQL: Pull Request is not mergeable (mergePullRequest)
+2025-10-09T20:33:57.2611697Z ##[error]Process completed with exit code 1.
+2025-10-09T20:33:57.2776451Z Post job cleanup.
+2025-10-09T20:33:57.3702695Z [command]/usr/bin/git version
+2025-10-09T20:33:57.3736849Z git version 2.51.0
+2025-10-09T20:33:57.3778524Z Temporarily overriding HOME='/home/runner/work/_temp/40fbf2a2-027c-4f6e-a50d-20fc5262b697' before making global git config changes
+2025-10-09T20:33:57.3779401Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-09T20:33:57.3784087Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/life-currents/life-currents
+2025-10-09T20:33:57.3817250Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-10-09T20:33:57.3848394Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-10-09T20:33:57.4075125Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-09T20:33:57.4094871Z http.https://github.com/.extraheader
+2025-10-09T20:33:57.4107630Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-10-09T20:33:57.4137764Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-10-09T20:33:57.4455655Z Cleaning up orphan processes

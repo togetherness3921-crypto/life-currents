@@ -1,0 +1,11 @@
+﻿2025-10-09T20:33:56.0479141Z ##[group]Run echo "Merging PR #116"
+2025-10-09T20:33:56.0479493Z [36;1mecho "Merging PR #116"[0m
+2025-10-09T20:33:56.0479806Z [36;1mgh pr merge 116 --merge --delete-branch --admin[0m
+2025-10-09T20:33:56.0480146Z [36;1mecho "PR merge successful."[0m
+2025-10-09T20:33:56.0522059Z shell: /usr/bin/bash -e {0}
+2025-10-09T20:33:56.0522429Z env:
+2025-10-09T20:33:56.0522961Z   GH_TOKEN: ***
+2025-10-09T20:33:56.0523259Z ##[endgroup]
+2025-10-09T20:33:56.0589008Z Merging PR #116
+2025-10-09T20:33:57.2569549Z GraphQL: Pull Request is not mergeable (mergePullRequest)
+2025-10-09T20:33:57.2611676Z ##[error]Process completed with exit code 1.

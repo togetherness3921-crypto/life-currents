@@ -1,0 +1,18 @@
+﻿2025-10-09T20:33:41.1049361Z ##[group]Run npm ci
+2025-10-09T20:33:41.1049680Z [36;1mnpm ci[0m
+2025-10-09T20:33:41.1207880Z shell: /usr/bin/bash -e {0}
+2025-10-09T20:33:41.1208198Z ##[endgroup]
+2025-10-09T20:33:49.3260000Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2025-10-09T20:33:49.5763537Z npm warn deprecated @types/uuid@11.0.0: This is a stub types definition. uuid provides its own type definitions, so you do not need this installed.
+2025-10-09T20:33:55.9941110Z 
+2025-10-09T20:33:55.9942380Z added 460 packages, and audited 461 packages in 15s
+2025-10-09T20:33:55.9942915Z 
+2025-10-09T20:33:55.9943248Z 87 packages are looking for funding
+2025-10-09T20:33:55.9943798Z   run `npm fund` for details
+2025-10-09T20:33:56.0053250Z 
+2025-10-09T20:33:56.0053669Z 2 moderate severity vulnerabilities
+2025-10-09T20:33:56.0054126Z 
+2025-10-09T20:33:56.0054389Z To address all issues, run:
+2025-10-09T20:33:56.0054967Z   npm audit fix
+2025-10-09T20:33:56.0058520Z 
+2025-10-09T20:33:56.0059024Z Run `npm audit` for details.
