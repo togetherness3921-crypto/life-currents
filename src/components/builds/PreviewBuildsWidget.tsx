@@ -165,9 +165,9 @@ const PreviewBuildsWidget = () => {
                     <div className="flex items-center gap-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Button
-                          variant="outline"
                           size="sm"
                           onClick={() => handleViewPreview(build.preview_url)}
+                          className="bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-500"
                         >
                           <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />
                           View
