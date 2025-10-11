@@ -21,7 +21,7 @@ import type { ConversationContextMode } from '@/hooks/conversationContextProvide
 import useModelSelection from '@/hooks/useModelSelection';
 import { getAvailableModels, type ModelInfo } from '@/services/openRouter';
 import { Toggle } from '@/components/ui/toggle';
-import { Check, Pin, Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface SettingsDialogProps {
@@ -38,7 +38,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         activeInstructionId,
         activeInstruction,
         loading,
-        saving,
         setActiveInstruction,
         updateInstruction,
         createInstruction,
@@ -61,13 +60,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     } = useModelSelection();
 
     const [selectedInstructionId, setSelectedInstructionId] = useState<string | null>(null);
-    const [isCreatingNew, setIsCreatingNew] = useState(false);
-    const [titleEditing, setTitleEditing] = useState(false);
-    const [contentEditing, setContentEditing] = useState(false);
     const [localTitle, setLocalTitle] = useState('');
     const [localContent, setLocalContent] = useState('');
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [lastSaveError, setLastSaveError] = useState<string | null>(null);
     const titleRef = useRef<HTMLInputElement | null>(null);
     const contentRef = useRef<HTMLTextAreaElement | null>(null);
+    const saveTimeoutRef = useRef<number | null>(null);
     const [activeTab, setActiveTab] = useState<'system' | 'context' | 'model'>('system');
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [modelSearchTerm, setModelSearchTerm] = useState('');
@@ -121,19 +120,17 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     }, [getInstructionUsageScore, instructions]);
 
     const resolvedInstruction = useMemo(() => {
-        if (isCreatingNew) {
-            return null;
-        }
         const targetId = selectedInstructionId ?? activeInstructionId;
         if (!targetId) {
             return activeInstruction;
         }
         return instructions.find((instruction) => instruction.id === targetId) ?? activeInstruction ?? null;
-    }, [activeInstruction, activeInstructionId, instructions, isCreatingNew, selectedInstructionId]);
+    }, [activeInstruction, activeInstructionId, instructions, selectedInstructionId]);
 
     useEffect(() => {
-        if (isCreatingNew) {
-            return;
+        if (saveTimeoutRef.current) {
+            window.clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
         }
         if (resolvedInstruction) {
             setLocalTitle(resolvedInstruction.title);
@@ -142,30 +139,84 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
             setLocalTitle('');
             setLocalContent('');
         }
-        setTitleEditing(false);
-        setContentEditing(false);
-    }, [isCreatingNew, resolvedInstruction?.content, resolvedInstruction?.id, resolvedInstruction?.title]);
+        setSaveStatus('idle');
+        setLastSaveError(null);
+    }, [resolvedInstruction?.content, resolvedInstruction?.id, resolvedInstruction?.title]);
+
+    const hasUnsavedChanges = useMemo(() => {
+        if (!resolvedInstruction) {
+            return localTitle.trim().length > 0 || localContent.trim().length > 0;
+        }
+        return localTitle !== resolvedInstruction.title || localContent !== resolvedInstruction.content;
+    }, [localContent, localTitle, resolvedInstruction]);
+
+    const persistChanges = useCallback(async () => {
+        if (!resolvedInstruction || saveStatus === 'saving') {
+            return;
+        }
+        const trimmedTitle = localTitle.trim();
+        const nextTitle = trimmedTitle.length > 0 ? trimmedTitle : 'Untitled Instruction';
+        const nextContent = localContent;
+
+        if (nextTitle === resolvedInstruction.title && nextContent === resolvedInstruction.content) {
+            setSaveStatus('idle');
+            setLastSaveError(null);
+            return;
+        }
+
+        setSaveStatus('saving');
+        setLastSaveError(null);
+        try {
+            await updateInstruction(resolvedInstruction.id, nextTitle, nextContent);
+            setSaveStatus('saved');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unexpected error while saving.';
+            setLastSaveError(message);
+            setSaveStatus('error');
+            throw error;
+        }
+    }, [localContent, localTitle, resolvedInstruction, saveStatus, updateInstruction]);
 
     useEffect(() => {
-        if (titleEditing && titleRef.current) {
-            titleRef.current.focus();
-            titleRef.current.select();
+        if (saveStatus !== 'saved') {
+            return () => {
+                if (saveTimeoutRef.current) {
+                    window.clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = null;
+                }
+            };
         }
-    }, [titleEditing]);
+
+        if (saveTimeoutRef.current) {
+            window.clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = window.setTimeout(() => {
+            setSaveStatus('idle');
+            saveTimeoutRef.current = null;
+        }, 2000);
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                window.clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+        };
+    }, [saveStatus]);
 
     useEffect(() => {
-        if (contentEditing && contentRef.current) {
-            contentRef.current.focus();
+        if (saveStatus === 'error') {
+            setSaveStatus('idle');
+            setLastSaveError(null);
         }
-    }, [contentEditing]);
+    }, [localContent, localTitle, saveStatus]);
 
     const resetInstructionForm = () => {
         setSelectedInstructionId(null);
-        setIsCreatingNew(false);
-        setTitleEditing(false);
-        setContentEditing(false);
         setLocalTitle('');
         setLocalContent('');
+        setSaveStatus('idle');
+        setLastSaveError(null);
     };
 
     const resetDialogState = () => {
@@ -177,12 +228,21 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     const handleSelectInstruction = async (id: string) => {
         const instruction = instructions.find((item) => item.id === id);
         if (!instruction) return;
-        setIsCreatingNew(false);
+
+        if (resolvedInstruction && resolvedInstruction.id !== id && hasUnsavedChanges) {
+            try {
+                await persistChanges();
+            } catch {
+                return;
+            }
+        }
+
         setSelectedInstructionId(id);
         setLocalTitle(instruction.title);
         setLocalContent(instruction.content);
-        setTitleEditing(false);
-        setContentEditing(false);
+        setSaveStatus('idle');
+        setLastSaveError(null);
+
         if (id !== activeInstructionId) {
             try {
                 await setActiveInstruction(id);
@@ -197,80 +257,42 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         }
     };
 
-    const handleStartCreate = () => {
+    const handleStartCreate = async () => {
         setActiveTab('system');
-        setIsCreatingNew(true);
-        setSelectedInstructionId(null);
-        setLocalTitle('');
-        setLocalContent('');
-        setTitleEditing(true);
-        setContentEditing(true);
-    };
 
-    const handleCancelEditing = () => {
-        if (isCreatingNew) {
-            resetInstructionForm();
-            return;
-        }
-        if (resolvedInstruction) {
-            setLocalTitle(resolvedInstruction.title);
-            setLocalContent(resolvedInstruction.content);
-        } else {
-            setLocalTitle('');
-            setLocalContent('');
-        }
-        setTitleEditing(false);
-        setContentEditing(false);
-    };
-
-    const baseTitle = isCreatingNew ? '' : resolvedInstruction?.title ?? '';
-    const baseContent = isCreatingNew ? '' : resolvedInstruction?.content ?? '';
-
-    const hasChanges = isCreatingNew
-        ? localTitle.trim().length > 0 || localContent.trim().length > 0
-        : localTitle !== baseTitle || localContent !== baseContent;
-
-    const canSave = localTitle.trim().length > 0 && localContent.trim().length > 0 && (isCreatingNew || hasChanges);
-
-    const handleSave = async () => {
-        if (!canSave) return;
-        if (isCreatingNew) {
+        if (resolvedInstruction && hasUnsavedChanges) {
             try {
-                const newId = await createInstruction(localTitle.trim(), localContent.trim(), { activate: true });
-                if (newId) {
-                    setSelectedInstructionId(newId);
-                    setIsCreatingNew(false);
-                }
-            } catch (error) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Failed to create instruction',
-                    description: error instanceof Error ? error.message : 'Unexpected error while creating.',
-                });
-                return;
-            }
-        } else if (resolvedInstruction) {
-            try {
-                await updateInstruction(resolvedInstruction.id, localTitle.trim(), localContent.trim(), { activate: true });
-            } catch (error) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Failed to save instruction',
-                    description: error instanceof Error ? error.message : 'Unexpected error while saving.',
-                });
+                await persistChanges();
+            } catch {
                 return;
             }
         }
-        setTitleEditing(false);
-        setContentEditing(false);
+
+        try {
+            const newId = await createInstruction('Untitled Instruction', '', { activate: true });
+            if (newId) {
+                setSelectedInstructionId(newId);
+                setLocalTitle('Untitled Instruction');
+                setLocalContent('');
+                setSaveStatus('idle');
+                setLastSaveError(null);
+                window.setTimeout(() => {
+                    if (titleRef.current) {
+                        titleRef.current.focus();
+                        titleRef.current.select();
+                    }
+                }, 0);
+            }
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Failed to create instruction',
+                description: error instanceof Error ? error.message : 'Unexpected error while creating.',
+            });
+        }
     };
 
     const handleDelete = async () => {
-        if (isCreatingNew) {
-            resetInstructionForm();
-            return;
-        }
-
         const targetId = resolvedInstruction?.id;
         if (!targetId) {
             return;
@@ -348,6 +370,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         <Dialog
             open={open}
             onOpenChange={(nextOpen) => {
+                if (!nextOpen && hasUnsavedChanges) {
+                    persistChanges().catch(() => undefined);
+                }
                 if (!nextOpen) {
                     resetDialogState();
                 }
@@ -417,104 +442,82 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="space-y-1">
                                                 <p className="text-sm font-semibold">
-                                                    {isCreatingNew
-                                                        ? 'New Instruction'
-                                                        : resolvedInstruction?.title || 'Select an instruction'}
+                                                    {resolvedInstruction?.title || 'Select an instruction'}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    {isCreatingNew
-                                                        ? 'Draft'
-                                                        : isActiveInstruction
+                                                    {resolvedInstruction
+                                                        ? isActiveInstruction
                                                             ? 'Active instruction'
-                                                            : resolvedInstruction
-                                                                ? 'Inactive'
-                                                                : 'Nothing selected'}
+                                                            : 'Inactive'
+                                                        : 'Nothing selected'}
                                                 </p>
                                             </div>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={handleDelete}
-                                                disabled={(!isCreatingNew && instructions.length <= 1) || (!isCreatingNew && !resolvedInstruction)}
-                                            >
-                                                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                                <span className="sr-only">Delete instruction</span>
-                                            </Button>
+                                            <div className="flex flex-col items-end gap-2">
+                                                {resolvedInstruction && saveStatus !== 'idle' && (
+                                                    <div className="flex items-center gap-2 text-xs">
+                                                        {saveStatus === 'saving' && (
+                                                            <span className="text-muted-foreground">Saving…</span>
+                                                        )}
+                                                        {saveStatus === 'saved' && (
+                                                            <span className="text-emerald-600">Saved</span>
+                                                        )}
+                                                        {saveStatus === 'error' && (
+                                                            <>
+                                                                <span className="text-destructive">
+                                                                    {lastSaveError ?? 'Save failed'}
+                                                                </span>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="link"
+                                                                    size="sm"
+                                                                    className="h-auto px-0 text-xs"
+                                                                    onClick={() => persistChanges().catch(() => undefined)}
+                                                                >
+                                                                    Retry
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={handleDelete}
+                                                    disabled={!resolvedInstruction || instructions.length <= 1}
+                                                >
+                                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                                    <span className="sr-only">Delete instruction</span>
+                                                </Button>
+                                            </div>
                                         </div>
                                         <div className="space-y-4">
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="instruction-title">Title</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => setTitleEditing(true)}
-                                                        disabled={titleEditing || (!isCreatingNew && !resolvedInstruction)}
-                                                    >
-                                                        <Pin className="h-4 w-4" aria-hidden="true" />
-                                                        <span className="sr-only">Edit title</span>
-                                                    </Button>
-                                                </div>
+                                                <Label htmlFor="instruction-title">Title</Label>
                                                 <Input
                                                     id="instruction-title"
                                                     ref={titleRef}
                                                     value={localTitle}
                                                     onChange={(event) => setLocalTitle(event.target.value)}
+                                                    onBlur={() => persistChanges().catch(() => undefined)}
                                                     placeholder="Instruction title"
-                                                    readOnly={!titleEditing && !isCreatingNew}
-                                                    aria-readonly={!titleEditing && !isCreatingNew}
-                                                    className={cn(
-                                                        !titleEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
-                                                    )}
+                                                    disabled={!resolvedInstruction}
                                                 />
                                             </div>
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="instruction-content">Text Content</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => setContentEditing(true)}
-                                                        disabled={contentEditing || (!isCreatingNew && !resolvedInstruction)}
-                                                    >
-                                                        <Pin className="h-4 w-4" aria-hidden="true" />
-                                                        <span className="sr-only">Edit content</span>
-                                                    </Button>
-                                                </div>
+                                                <Label htmlFor="instruction-content">Text Content</Label>
                                                 <Textarea
                                                     id="instruction-content"
                                                     ref={contentRef}
                                                     value={localContent}
                                                     onChange={(event) => setLocalContent(event.target.value)}
+                                                    onBlur={() => persistChanges().catch(() => undefined)}
                                                     rows={10}
-                                                    readOnly={!contentEditing && !isCreatingNew}
-                                                    aria-readonly={!contentEditing && !isCreatingNew}
-                                                    className={cn(
-                                                        'h-48 resize-y font-mono text-sm',
-                                                        !contentEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
-                                                    )}
+                                                    disabled={!resolvedInstruction}
+                                                    className="min-h-[3.75rem] resize-y font-mono text-sm"
                                                 />
                                             </div>
                                         </div>
-                                        {(isCreatingNew || titleEditing || contentEditing || hasChanges) && (
-                                            <div className="flex flex-wrap items-center justify-end gap-2">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={handleCancelEditing}
-                                                    disabled={saving}
-                                                >
-                                                    Cancel
-                                                </Button>
-                                                <Button type="button" size="sm" onClick={handleSave} disabled={!canSave || saving}>
-                                                    {saving ? 'Saving…' : isCreatingNew ? 'Create & Activate' : 'Save Changes'}
-                                                </Button>
-                                            </div>
-                                        )}
                                     </>
                                 )}
                             </div>

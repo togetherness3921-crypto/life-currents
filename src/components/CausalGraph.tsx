@@ -63,6 +63,7 @@ export default function CausalGraph() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useRef<ReactFlowInstance<any, any> | null>(null);
   const pendingAutoFitRef = useRef(false);
+  const autoFitSignatureRef = useRef<string | null>(null);
   const fitCancelledRef = useRef(false);
   const targetFitGraphIdRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
@@ -231,6 +232,33 @@ export default function CausalGraph() {
       highlightTimerRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    if (!layoutReady || !reactFlowInstance.current) {
+      return;
+    }
+    if (nodes.length === 0) {
+      return;
+    }
+
+    const signature = `${activeGraphId}:${nodes
+      .map((node) => {
+        const x = Math.round(node.position?.x ?? 0);
+        const y = Math.round(node.position?.y ?? 0);
+        const w = Math.round((node.width ?? 0) * 100);
+        const h = Math.round((node.height ?? 0) * 100);
+        return `${node.id}:${x}:${y}:${w}:${h}`;
+      })
+      .join('|')}`;
+
+    if (autoFitSignatureRef.current === signature) {
+      return;
+    }
+
+    autoFitSignatureRef.current = signature;
+    targetFitGraphIdRef.current = activeGraphId;
+    pendingAutoFitRef.current = true;
+  }, [activeGraphId, layoutReady, nodes]);
 
   const handleTopLayoutChange = useCallback(
     (sizes: number[]) => {

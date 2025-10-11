@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { GitPullRequest, Loader2, GitMerge, Eye } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { GitPullRequest, Loader2, GitMerge } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -18,11 +18,23 @@ const PreviewBuildsWidget = () => {
     error,
     unseenCount,
     committingPrNumbers,
+    markBuildSeen,
     markAllSeen,
     commitBuild,
   } = usePreviewBuilds();
 
   const hasUnseen = unseenCount > 0;
+
+  useEffect(() => {
+    if (!hasUnseen && open) {
+      setOpen(false);
+    }
+  }, [hasUnseen, open]);
+
+  const formattedUnseenCount = useMemo(
+    () => (unseenCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : unseenCount),
+    [unseenCount],
+  );
 
   const buttonLabel = hasUnseen
     ? `${unseenCount} preview ${unseenCount === 1 ? 'build' : 'builds'} ready for review`
@@ -30,22 +42,12 @@ const PreviewBuildsWidget = () => {
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (nextOpen) {
-      markAllSeen().catch((error) => {
-        const message = error instanceof Error ? error.message : 'Failed to update build visibility.';
-        toast({
-          variant: 'destructive',
-          title: 'Unable to mark builds as seen',
-          description: message,
-        });
-      });
-    }
   };
 
-  const handleViewPreview = (rawUrl: string) => {
-    const trimmedUrl = (rawUrl ?? '').trim().replace(/'+$/, '');
+  const handleViewPreview = async (build: (typeof builds)[number]) => {
+    const trimmedUrl = (build.preview_url ?? '').trim().replace(/'+$/, '');
     console.debug('[PreviewBuilds] View clicked', {
-      rawUrl,
+      rawUrl: build.preview_url,
       trimmedUrl,
       locationHref: window.location.href,
     });
@@ -61,14 +63,29 @@ const PreviewBuildsWidget = () => {
     }
 
     try {
-      window.location.assign(trimmedUrl);
+      await markBuildSeen(build);
     } catch (error) {
-      console.error('[PreviewBuilds] Failed to navigate to preview URL', error);
+      const message = error instanceof Error ? error.message : 'Failed to update preview visibility.';
+      console.error('[PreviewBuilds] Failed to mark preview as viewed', { error, message, prNumber: build.pr_number });
       toast({
         variant: 'destructive',
-        title: 'Failed to open preview',
-        description: error instanceof Error ? error.message : 'Unexpected error when opening preview.',
+        title: 'Unable to update preview status',
+        description: message,
       });
+    } finally {
+      try {
+        window.location.assign(trimmedUrl);
+      } catch (navigationError) {
+        console.error('[PreviewBuilds] Failed to navigate to preview URL', navigationError);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to open preview',
+          description:
+            navigationError instanceof Error
+              ? navigationError.message
+              : 'Unexpected error when opening preview.',
+        });
+      }
     }
   };
 
@@ -79,6 +96,18 @@ const PreviewBuildsWidget = () => {
       previewUrl: build.preview_url,
     });
     try {
+      await markAllSeen().catch((markError) => {
+        const message = markError instanceof Error ? markError.message : 'Failed to update preview visibility.';
+        console.error('[PreviewBuilds] Failed to mark all builds seen before commit', {
+          error: markError,
+          message,
+        });
+        toast({
+          variant: 'destructive',
+          title: 'Unable to update preview status',
+          description: message,
+        });
+      });
       await commitBuild(build);
       console.debug('[PreviewBuilds] Commit completed', { prNumber: build.pr_number });
     } catch (error) {
@@ -96,12 +125,16 @@ const PreviewBuildsWidget = () => {
     }
   };
 
+  if (!hasUnseen && !open) {
+    return null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant={hasUnseen ? 'default' : 'secondary'}
+          variant="default"
           className={cn(
             'fixed bottom-6 left-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             hasUnseen ? 'animate-[pulse_2s_ease-in-out_infinite]' : 'hover:translate-y-[-2px]'
@@ -112,7 +145,7 @@ const PreviewBuildsWidget = () => {
           <span className="sr-only">{buttonLabel}</span>
           {hasUnseen && (
             <span className="pointer-events-none absolute -top-1.5 -right-1.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
-              {unseenCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : unseenCount}
+              {formattedUnseenCount}
             </span>
           )}
         </Button>
@@ -149,6 +182,13 @@ const PreviewBuildsWidget = () => {
                 const commitDisabled = isCommitted || isCommitting;
                 const commitLabel = isCommitted ? 'Committed' : isCommitting ? 'Committing…' : 'Commit';
                 const displayPreviewUrl = (build.preview_url ?? '').trim().replace(/'+$/, '');
+                const createdAtLabel = build.created_at
+                  ? new Date(build.created_at).toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
+                  : 'Creation time unavailable';
+                const statusLabel = isCommitted ? 'Committed' : 'Pending review';
 
                 return (
                   <div
@@ -164,6 +204,8 @@ const PreviewBuildsWidget = () => {
                       >
                         PR #{build.pr_number}
                       </a>
+                      <p className="text-xs text-muted-foreground">{createdAtLabel}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Status: {statusLabel}</p>
                       <p className="break-all text-xs text-muted-foreground">
                         {displayPreviewUrl || 'Preview URL unavailable'}
                       </p>
@@ -172,9 +214,8 @@ const PreviewBuildsWidget = () => {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => handleViewPreview(build.preview_url)}
+                        onClick={() => handleViewPreview(build)}
                       >
-                        <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />
                         View
                       </Button>
                       <Button
