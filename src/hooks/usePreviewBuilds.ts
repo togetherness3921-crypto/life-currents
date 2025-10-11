@@ -155,6 +155,18 @@ export const usePreviewBuilds = () => {
     [state.builds],
   );
 
+  const syncIsSeen = useCallback(
+    async (predicate: (query: any) => any) => {
+      const query = (supabase as any).from('preview_builds').update({ is_seen: true });
+      const { error } = await predicate(query);
+      if (error) {
+        await fetchBuilds();
+        throw error;
+      }
+    },
+    [fetchBuilds],
+  );
+
   const markAllSeen = useCallback(async () => {
     let shouldSync = false;
     setState((prev) => {
@@ -173,16 +185,51 @@ export const usePreviewBuilds = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('preview_builds')
-      .update({ is_seen: true })
-      .eq('is_seen', false);
+    await syncIsSeen((query) => query.eq('is_seen', false));
+  }, [syncIsSeen]);
 
-    if (error) {
-      await fetchBuilds();
-      throw error;
-    }
-  }, [fetchBuilds]);
+  const markBuildSeen = useCallback(
+    async (build: PreviewBuild) => {
+      if (!build || build.is_seen) {
+        return;
+      }
+
+      let shouldSync = false;
+      setState((prev) => {
+        const nextBuilds = prev.builds.map((item) => {
+          if (getBuildKey(item) !== getBuildKey(build)) {
+            return item;
+          }
+          if (item.is_seen) {
+            return item;
+          }
+          shouldSync = true;
+          return { ...item, is_seen: true };
+        });
+
+        if (!shouldSync) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          builds: nextBuilds,
+        };
+      });
+
+      if (!shouldSync) {
+        return;
+      }
+
+      await syncIsSeen((query) => {
+        if (build.id) {
+          return query.eq('id', build.id);
+        }
+        return query.eq('pr_number', build.pr_number);
+      });
+    },
+    [syncIsSeen],
+  );
 
   const commitBuild = useCallback(
     async (build: PreviewBuild) => {
@@ -225,6 +272,7 @@ export const usePreviewBuilds = () => {
     unseenCount,
     committingPrNumbers: state.committing as ReadonlySet<number>,
     markAllSeen,
+    markBuildSeen,
     commitBuild,
     refresh,
   };
