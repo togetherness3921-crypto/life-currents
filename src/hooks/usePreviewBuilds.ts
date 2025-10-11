@@ -150,9 +150,45 @@ export const usePreviewBuilds = () => {
     });
   }, [state.builds]);
 
-  const unseenCount = useMemo(
-    () => state.builds.filter((build) => !build.is_seen).length,
-    [state.builds],
+  const unseenCount = useMemo(() => state.builds.filter((build) => !build.is_seen).length, [state.builds]);
+
+  const markBuildSeen = useCallback(
+    async (target: PreviewBuild) => {
+      if (!target || target.is_seen) {
+        return;
+      }
+
+      let targetId: string | undefined;
+      setState((prev) => {
+        const nextBuilds = prev.builds.map((build) => {
+          const isMatch = getBuildKey(build) === getBuildKey(target);
+          if (isMatch) {
+            targetId = build.id;
+          }
+          return isMatch ? { ...build, is_seen: true } : build;
+        });
+
+        return {
+          ...prev,
+          builds: nextBuilds,
+        };
+      });
+
+      if (!targetId) {
+        return;
+      }
+
+      const { error } = await supabase
+        .from('preview_builds')
+        .update({ is_seen: true })
+        .eq('id', targetId);
+
+      if (error) {
+        await fetchBuilds();
+        throw error;
+      }
+    },
+    [fetchBuilds],
   );
 
   const markAllSeen = useCallback(async () => {
@@ -224,6 +260,7 @@ export const usePreviewBuilds = () => {
     error: state.error,
     unseenCount,
     committingPrNumbers: state.committing as ReadonlySet<number>,
+    markBuildSeen,
     markAllSeen,
     commitBuild,
     refresh,

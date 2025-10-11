@@ -5,6 +5,7 @@ export interface SystemInstruction {
     title: string;
     content: string;
     updatedAt: string;
+    isActive: boolean;
 }
 
 export interface SystemInstructionsContextValue {
