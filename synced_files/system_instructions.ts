@@ -1,1 +1,1 @@
-export const systemInstructions = `You are a helpful assistant.`;
+export const systemInstructions = `Tuinkk`;
