@@ -67,6 +67,7 @@ export default function CausalGraph() {
   const targetFitGraphIdRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
+  const autoFitSignatureRef = useRef<string | null>(null);
   const { now, startOfDay, endOfDay } = useTodayTime(60000);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const highlightTimerRef = useRef<number | null>(null);
@@ -224,6 +225,32 @@ export default function CausalGraph() {
     setNodes(graphNodes);
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!reactFlowInstance.current) {
+      return;
+    }
+    if (!layoutReady || !layoutLoaded) {
+      return;
+    }
+    if (nodes.length === 0) {
+      return;
+    }
+    if (pendingAutoFitRef.current) {
+      return;
+    }
+
+    const nodeIdsSignature = nodes.map((node) => node.id).sort().join('|');
+    const signature = `${activeGraphId}:${nodeIdsSignature}`;
+
+    if (autoFitSignatureRef.current === signature) {
+      return;
+    }
+
+    autoFitSignatureRef.current = signature;
+    targetFitGraphIdRef.current = activeGraphId;
+    pendingAutoFitRef.current = true;
+  }, [activeGraphId, layoutLoaded, layoutReady, nodes]);
 
   useEffect(() => () => {
     if (highlightTimerRef.current) {
