@@ -185,6 +185,9 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          commit_sha: string | null
+          run_id: string | null
+          build_number: string | null
           is_seen: boolean
           pr_number: number
           pr_url: string
@@ -194,6 +197,9 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          commit_sha?: string | null
+          run_id?: string | null
+          build_number?: string | null
           is_seen?: boolean
           pr_number: number
           pr_url: string
@@ -203,11 +209,41 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          commit_sha?: string | null
+          run_id?: string | null
+          build_number?: string | null
           is_seen?: boolean
           pr_number?: number
           pr_url?: string
           preview_url?: string
           status?: 'pending_review' | 'committed'
+        }
+        Relationships: []
+      }
+      system_instruction_presets: {
+        Row: {
+          id: string
+          title: string
+          content: string
+          is_active: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          content: string
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          content?: string
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

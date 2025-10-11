@@ -30,6 +30,41 @@ import ChatLayout from './chat/ChatLayout';
 import { useToast } from '@/hooks/use-toast';
 import { fetchLayoutBorders, persistLayoutBorders } from '@/services/layoutPersistence';
 
+const DEFAULT_TOP_LAYOUT = [70, 15, 15] as const;
+const DEFAULT_MAIN_VERTICAL_LAYOUT = [65, 15, 20] as const;
+const DEFAULT_PROGRESS_LAYOUT = [75, 25] as const;
+
+const MIN_PANEL = 5;
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const computeThreePanelLayout = (
+  defaults: readonly number[],
+  first?: number,
+  second?: number
+): number[] => {
+  if (typeof first !== 'number' || typeof second !== 'number') {
+    return [...defaults];
+  }
+  const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL * 2);
+  const secondClamped = clamp(second, firstClamped + MIN_PANEL, 100 - MIN_PANEL);
+  const layout = [
+    firstClamped,
+    Math.max(MIN_PANEL, secondClamped - firstClamped),
+    Math.max(MIN_PANEL, 100 - secondClamped),
+  ];
+  const total = layout.reduce((sum, value) => sum + value, 0);
+  return layout.map((value) => (value / total) * 100);
+};
+
+const computeTwoPanelLayout = (defaults: readonly number[], first?: number): number[] => {
+  if (typeof first !== 'number') {
+    return [...defaults];
+  }
+  const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL);
+  return [firstClamped, 100 - firstClamped];
+};
+
 const nodeTypes = {
   startNode: StartNode,
   objectiveNode: ObjectiveNode,
@@ -67,49 +102,16 @@ export default function CausalGraph() {
   const targetFitGraphIdRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
+  const previousLayoutReadyRef = useRef(layoutReady);
   const { now, startOfDay, endOfDay } = useTodayTime(60000);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const highlightTimerRef = useRef<number | null>(null);
   const { toast } = useToast();
 
-  const DEFAULT_TOP_LAYOUT = [70, 15, 15] as const;
-  const DEFAULT_MAIN_VERTICAL_LAYOUT = [65, 15, 20] as const;
-  const DEFAULT_PROGRESS_LAYOUT = [75, 25] as const;
-
   const [topLayout, setTopLayout] = useState<number[] | null>(null);
   const [mainVerticalLayoutState, setMainVerticalLayoutState] = useState<number[] | null>(null);
   const [progressLayoutState, setProgressLayoutState] = useState<number[] | null>(null);
   const [layoutLoaded, setLayoutLoaded] = useState(false);
-
-  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-  const MIN_PANEL = 5;
-
-  const computeThreePanelLayout = (
-    defaults: readonly number[],
-    first?: number,
-    second?: number
-  ): number[] => {
-    if (typeof first !== 'number' || typeof second !== 'number') {
-      return [...defaults];
-    }
-    const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL * 2);
-    const secondClamped = clamp(second, firstClamped + MIN_PANEL, 100 - MIN_PANEL);
-    const layout = [
-      firstClamped,
-      Math.max(MIN_PANEL, secondClamped - firstClamped),
-      Math.max(MIN_PANEL, 100 - secondClamped),
-    ];
-    const total = layout.reduce((sum, value) => sum + value, 0);
-    return layout.map((value) => (value / total) * 100);
-  };
-
-  const computeTwoPanelLayout = (defaults: readonly number[], first?: number): number[] => {
-    if (typeof first !== 'number') {
-      return [...defaults];
-    }
-    const firstClamped = clamp(first, MIN_PANEL, 100 - MIN_PANEL);
-    return [firstClamped, 100 - firstClamped];
-  };
 
   useEffect(() => {
     let isMounted = true;
@@ -165,10 +167,8 @@ export default function CausalGraph() {
     const inst = reactFlowInstance.current as any;
     if (inst && typeof inst.getViewport === 'function') {
       const vp = inst.getViewport();
-      // eslint-disable-next-line no-console
       console.log(`[Viewport] ${label}`, vp);
     } else {
-      // eslint-disable-next-line no-console
       console.log(`[Viewport] ${label} (no getViewport available)`);
     }
   }, []);
@@ -224,6 +224,22 @@ export default function CausalGraph() {
     setNodes(graphNodes);
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    const wasReady = previousLayoutReadyRef.current;
+    previousLayoutReadyRef.current = layoutReady;
+
+    if (!layoutReady || !reactFlowInstance.current) {
+      return;
+    }
+
+    if (!wasReady && nodes.length > 0) {
+      if (!pendingAutoFitRef.current || targetFitGraphIdRef.current !== activeGraphId) {
+        targetFitGraphIdRef.current = activeGraphId;
+        pendingAutoFitRef.current = true;
+      }
+    }
+  }, [layoutReady, nodes.length, activeGraphId]);
 
   useEffect(() => () => {
     if (highlightTimerRef.current) {
@@ -384,7 +400,7 @@ export default function CausalGraph() {
       fitCancelledRef.current = true;
       clearTimeout(t);
     };
-  }, [nodes, edges, activeGraphId, layoutReady]);
+  }, [nodes, edges, activeGraphId, layoutReady, logViewport]);
 
   // Compute sub-objectives (children whose graph equals this node.id) and pass into ObjectiveNode as props
   const allDocNodes = (docData?.nodes || {}) as Record<string, any>;
