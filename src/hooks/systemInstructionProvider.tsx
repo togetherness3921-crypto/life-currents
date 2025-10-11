@@ -1,48 +1,18 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { SystemInstruction, SystemInstructionsContext, SystemInstructionsContextValue } from './systemInstructionProviderContext';
 
-const LOCAL_STORAGE_KEY = 'system_instruction_presets_v1';
-const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+type DbInstruction = Database['public']['Tables']['system_instructions']['Row'];
 
-interface StoredPreset {
-    id: string;
-    title: string;
-    content: string;
-    updatedAt: string;
-}
-
+const DEFAULT_TITLE = 'Untitled Instruction';
 const USAGE_STORAGE_KEY = 'system_instruction_usage_v1';
 const ROLLING_WINDOW_MS = 72 * 60 * 60 * 1000;
+const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
-interface InstructionUsageEntry {
+type InstructionUsageEntry = {
     instructionId: string;
     timestamp: number;
-}
-
-const DEFAULT_TITLE = 'Current Instruction';
-
-const readLocalPresets = (): StoredPreset[] => {
-    if (!isBrowser) return [];
-    try {
-        const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed.filter((preset) => preset.id && typeof preset.content === 'string');
-    } catch (error) {
-        console.warn('[SystemInstructions] Failed to parse presets from local storage', error);
-        return [];
-    }
-};
-
-const writeLocalPresets = (presets: StoredPreset[]) => {
-    if (!isBrowser) return;
-    try {
-        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(presets));
-    } catch (error) {
-        console.warn('[SystemInstructions] Failed to store presets in local storage', error);
-    }
 };
 
 const readUsageHistory = (): InstructionUsageEntry[] => {
@@ -82,18 +52,30 @@ const generateId = () => {
     return `instruction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+const mapRowToInstruction = (row: DbInstruction): SystemInstruction => ({
+    id: row.id,
+    title: row.title?.trim() || DEFAULT_TITLE,
+    content: row.content ?? '',
+    updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+    isActive: Boolean(row.is_active),
+});
+
+const getTimestamp = (value: string) => {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const sortInstructions = (list: SystemInstruction[]) =>
+    [...list].sort((a, b) => getTimestamp(b.updatedAt) - getTimestamp(a.updatedAt));
+
 export const SystemInstructionsProvider = ({ children }: { children: ReactNode }) => {
-    const [presets, setPresets] = useState<StoredPreset[]>(() => readLocalPresets());
+    const [instructions, setInstructions] = useState<SystemInstruction[]>([]);
     const [activeInstructionId, setActiveInstructionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [usageHistory, setUsageHistory] = useState<InstructionUsageEntry[]>(() =>
         pruneUsageHistory(readUsageHistory()),
     );
-
-    useEffect(() => {
-        writeLocalPresets(presets);
-    }, [presets]);
 
     useEffect(() => {
         writeUsageHistory(usageHistory);
@@ -114,181 +96,298 @@ export const SystemInstructionsProvider = ({ children }: { children: ReactNode }
 
     const usageCounts = useMemo(() => {
         const counts: Record<string, number> = {};
-
-        for (const preset of presets) {
+        for (const preset of instructions) {
             counts[preset.id] = Math.max(counts[preset.id] ?? 0, 1);
         }
-
         for (const entry of usageHistory) {
             if (!counts[entry.instructionId]) {
-                // Ensure deleted instructions don't inflate counts for unrelated IDs.
                 counts[entry.instructionId] = 1;
             }
             counts[entry.instructionId] += 1;
         }
-
         return counts;
-    }, [presets, usageHistory]);
+    }, [instructions, usageHistory]);
 
     const getUsageScore = useCallback((instructionId: string) => usageCounts[instructionId] ?? 0, [usageCounts]);
 
-    const refreshActiveFromSupabase = useCallback(async () => {
-        setLoading(true);
+    const syncActiveId = useCallback((list: SystemInstruction[], fallback?: string | null) => {
+        const active = list.find((instruction) => instruction.isActive);
+        if (active) {
+            setActiveInstructionId(active.id);
+            return;
+        }
+        if (fallback && list.some((instruction) => instruction.id === fallback)) {
+            setActiveInstructionId(fallback);
+            return;
+        }
+        setActiveInstructionId(list[0]?.id ?? null);
+    }, []);
+
+    const fetchInstructions = useCallback(async (options?: { silent?: boolean }) => {
+        if (!options?.silent) {
+            setLoading(true);
+        }
         try {
             const { data, error } = await (supabase as any)
                 .from('system_instructions')
-                .select('id, content, updated_at')
-                .eq('id', 'main')
-                .maybeSingle();
+                .select('id, title, content, updated_at, created_at, is_active')
+                .order('updated_at', { ascending: false })
+                .order('created_at', { ascending: false });
 
             if (error) throw error;
 
-            if (data) {
-                setPresets((prev) => {
-                    const existing = prev.find((preset) => preset.id === data.id);
-                    const instruction: StoredPreset = {
-                        id: data.id,
-                        title: existing?.title ?? DEFAULT_TITLE,
-                        content: data.content ?? '',
-                        updatedAt: data.updated_at ?? new Date().toISOString(),
-                    };
-
-                    const others = prev.filter((preset) => preset.id !== instruction.id);
-                    return [instruction, ...others];
-                });
-                setActiveInstructionId(data.id);
-            } else {
-                setActiveInstructionId(null);
-            }
+            const mapped = sortInstructions((data ?? []).map(mapRowToInstruction));
+            setInstructions(mapped);
+            syncActiveId(mapped, activeInstructionId);
         } catch (error) {
-            console.error('[SystemInstructions] Failed to refresh from Supabase', error);
+            console.error('[SystemInstructions] Failed to fetch instructions from Supabase', error);
+            setInstructions([]);
+            setActiveInstructionId(null);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [activeInstructionId, syncActiveId]);
 
     useEffect(() => {
-        refreshActiveFromSupabase();
-    }, [refreshActiveFromSupabase]);
+        fetchInstructions().catch((error) => {
+            console.error('[SystemInstructions] Initial instruction fetch failed', error);
+        });
+    }, [fetchInstructions]);
 
-    const persistToSupabase = useCallback(async (content: string) => {
-        setSaving(true);
-        try {
-            const { error } = await (supabase as any)
-                .from('system_instructions')
-                .update({ content })
-                .eq('id', 'main');
-            if (error) throw error;
-        } catch (error) {
-            console.error('[SystemInstructions] Failed to persist to Supabase', error);
-            throw error;
-        } finally {
-            setSaving(false);
-        }
-    }, []);
+    useEffect(() => {
+        const channel = (supabase as any)
+            .channel('system_instructions_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'system_instructions' }, (payload: any) => {
+                const eventType = payload?.eventType || payload?.event;
+                if (eventType === 'DELETE' && payload?.old?.id) {
+                    const removedId = String(payload.old.id);
+                    setInstructions((previous) => {
+                        const next = previous.filter((item) => item.id !== removedId);
+                        syncActiveId(next, activeInstructionId === removedId ? null : activeInstructionId);
+                        return next;
+                    });
+                    return;
+                }
 
-    const createInstruction = useCallback<
-        SystemInstructionsContextValue['createInstruction']
-    >(async (title, content, options) => {
-        const id = generateId();
-        const newPreset: StoredPreset = {
-            id,
-            title: title.trim() || `Preset ${presets.length + 1}`,
-            content,
-            updatedAt: new Date().toISOString(),
+                if ((eventType === 'INSERT' || eventType === 'UPDATE') && payload?.new) {
+                    const newRow = mapRowToInstruction(payload.new as DbInstruction);
+                    setInstructions((previous) => {
+                        const filtered = previous.filter((item) => item.id !== newRow.id);
+                        const next = sortInstructions([newRow, ...filtered]);
+                        syncActiveId(next, activeInstructionId);
+                        return next;
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            try {
+                (supabase as any).removeChannel(channel);
+            } catch (error) {
+                console.error('[SystemInstructions] Failed to remove realtime channel', error);
+            }
         };
+    }, [activeInstructionId, syncActiveId]);
 
-        setPresets((prev) => [newPreset, ...prev]);
+    const setActiveInstruction = useCallback<SystemInstructionsContextValue['setActiveInstruction']>(
+        async (id) => {
+            if (!id) return;
+            setSaving(true);
+            try {
+                const { error: clearError } = await (supabase as any)
+                    .from('system_instructions')
+                    .update({ is_active: false })
+                    .neq('id', id);
+                if (clearError) throw clearError;
 
-        if (options?.activate) {
-            setActiveInstructionId(id);
-            await persistToSupabase(content);
-            recordInstructionUsage(id);
-        }
+                const { data, error } = await (supabase as any)
+                    .from('system_instructions')
+                    .update({ is_active: true })
+                    .eq('id', id)
+                    .select('id, title, content, updated_at, created_at, is_active')
+                    .maybeSingle();
+                if (error) throw error;
 
-        return id;
-    }, [persistToSupabase, presets.length, recordInstructionUsage]);
+                if (data) {
+                    const mapped = mapRowToInstruction(data as DbInstruction);
+                    setInstructions((previous) => {
+                        const filtered = previous.filter((item) => item.id !== mapped.id);
+                        const next = sortInstructions([mapped, ...filtered]);
+                        syncActiveId(next, mapped.id);
+                        return next;
+                    });
+                } else {
+                    setActiveInstructionId(id);
+                }
 
-    const updateInstruction = useCallback<
-        SystemInstructionsContextValue['updateInstruction']
-    >(async (id, title, content, options) => {
-        setPresets((prev) => prev.map((preset) => (
-            preset.id === id
-                ? { ...preset, title: title.trim() || preset.title, content, updatedAt: new Date().toISOString() }
-                : preset
-        )));
+                recordInstructionUsage(id);
+            } catch (error) {
+                console.error('[SystemInstructions] Failed to activate instruction', error);
+                throw error;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [recordInstructionUsage, syncActiveId],
+    );
 
-        const shouldActivate = options?.activate || activeInstructionId === id;
-        if (shouldActivate) {
-            setActiveInstructionId(id);
-            await persistToSupabase(content);
-            recordInstructionUsage(id);
-        }
-    }, [activeInstructionId, persistToSupabase, recordInstructionUsage]);
+    const createInstruction = useCallback<SystemInstructionsContextValue['createInstruction']>(
+        async (title, content, options) => {
+            const id = generateId();
+            const normalizedTitle = title.trim() || DEFAULT_TITLE;
+            setSaving(true);
+            try {
+                const { data, error } = await (supabase as any)
+                    .from('system_instructions')
+                    .insert({
+                        id,
+                        title: normalizedTitle,
+                        content,
+                        is_active: options?.activate ?? false,
+                    })
+                    .select('id, title, content, updated_at, created_at, is_active')
+                    .maybeSingle();
+                if (error) throw error;
 
-    const deleteInstruction = useCallback<SystemInstructionsContextValue['deleteInstruction']>(async (id) => {
-        setPresets((prev) => prev.filter((preset) => preset.id !== id));
-        if (activeInstructionId === id) {
-            await refreshActiveFromSupabase();
-        }
-    }, [activeInstructionId, refreshActiveFromSupabase]);
+                if (data) {
+                    const mapped = mapRowToInstruction(data as DbInstruction);
+                    setInstructions((previous) => {
+                        const filtered = previous.filter((item) => item.id !== mapped.id);
+                        const next = sortInstructions([mapped, ...filtered]);
+                        syncActiveId(next, mapped.isActive ? mapped.id : activeInstructionId);
+                        return next;
+                    });
+                }
 
-    const setActiveInstruction = useCallback<SystemInstructionsContextValue['setActiveInstruction']>(async (id) => {
-        const preset = presets.find((item) => item.id === id);
-        if (!preset) return;
-        setActiveInstructionId(id);
-        await persistToSupabase(preset.content);
-        recordInstructionUsage(id);
-    }, [presets, persistToSupabase, recordInstructionUsage]);
+                if (options?.activate) {
+                    await setActiveInstruction(id);
+                }
 
-    const overwriteActiveInstruction = useCallback<SystemInstructionsContextValue['overwriteActiveInstruction']>(async (content) => {
-        if (!activeInstructionId) return;
-        setPresets((prev) => prev.map((preset) => (
-            preset.id === activeInstructionId
-                ? { ...preset, content, updatedAt: new Date().toISOString() }
-                : preset
-        )));
-        await persistToSupabase(content);
-    }, [activeInstructionId, persistToSupabase]);
+                if (options?.activate) {
+                    recordInstructionUsage(id);
+                }
+
+                return id;
+            } catch (error) {
+                console.error('[SystemInstructions] Failed to create instruction', error);
+                throw error;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [activeInstructionId, recordInstructionUsage, setActiveInstruction, syncActiveId],
+    );
+
+    const updateInstruction = useCallback<SystemInstructionsContextValue['updateInstruction']>(
+        async (id, title, content, options) => {
+            const normalizedTitle = title.trim() || DEFAULT_TITLE;
+            setSaving(true);
+            try {
+                const { data, error } = await (supabase as any)
+                    .from('system_instructions')
+                    .update({ title: normalizedTitle, content })
+                    .eq('id', id)
+                    .select('id, title, content, updated_at, created_at, is_active')
+                    .maybeSingle();
+                if (error) throw error;
+
+                if (data) {
+                    const mapped = mapRowToInstruction(data as DbInstruction);
+                    setInstructions((previous) => {
+                        const filtered = previous.filter((item) => item.id !== mapped.id);
+                        const next = sortInstructions([mapped, ...filtered]);
+                        syncActiveId(next, mapped.isActive ? mapped.id : activeInstructionId);
+                        return next;
+                    });
+                }
+
+                if (options?.activate) {
+                    await setActiveInstruction(id);
+                }
+
+                if (options?.activate) {
+                    recordInstructionUsage(id);
+                }
+            } catch (error) {
+                console.error('[SystemInstructions] Failed to update instruction', error);
+                throw error;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [activeInstructionId, recordInstructionUsage, setActiveInstruction, syncActiveId],
+    );
+
+    const deleteInstruction = useCallback<SystemInstructionsContextValue['deleteInstruction']>(
+        async (id) => {
+            if (!id) return;
+            setSaving(true);
+            try {
+                const { error } = await (supabase as any)
+                    .from('system_instructions')
+                    .delete()
+                    .eq('id', id);
+                if (error) throw error;
+
+                setInstructions((previous) => {
+                    const next = previous.filter((instruction) => instruction.id !== id);
+                    syncActiveId(next, activeInstructionId === id ? null : activeInstructionId);
+                    return next;
+                });
+            } catch (error) {
+                console.error('[SystemInstructions] Failed to delete instruction', error);
+                throw error;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [activeInstructionId, syncActiveId],
+    );
+
+    const overwriteActiveInstruction = useCallback<SystemInstructionsContextValue['overwriteActiveInstruction']>(
+        async (content) => {
+            if (!activeInstructionId) return;
+            const current = instructions.find((instruction) => instruction.id === activeInstructionId);
+            if (!current) return;
+            await updateInstruction(activeInstructionId, current.title, content, { activate: true });
+        },
+        [activeInstructionId, instructions, updateInstruction],
+    );
+
+    const refreshActiveFromSupabase = useCallback(async () => {
+        await fetchInstructions();
+    }, [fetchInstructions]);
 
     const activeInstruction = useMemo(() => (
         activeInstructionId
-            ? presets.find((preset) => preset.id === activeInstructionId) ?? null
+            ? instructions.find((preset) => preset.id === activeInstructionId) ?? null
             : null
-    ), [activeInstructionId, presets]);
+    ), [activeInstructionId, instructions]);
 
-    const contextValue = useMemo<SystemInstructionsContextValue>(() => {
-        const instructions: SystemInstruction[] = presets.map((preset) => ({
-            id: preset.id,
-            title: preset.title,
-            content: preset.content,
-            updatedAt: preset.updatedAt,
-        }));
-
-        return {
-            instructions,
-            activeInstructionId,
-            activeInstruction,
-            loading,
-            saving,
-            createInstruction,
-            updateInstruction,
-            deleteInstruction,
-            setActiveInstruction,
-            overwriteActiveInstruction,
-            refreshActiveFromSupabase,
-            getUsageScore,
-            recordInstructionUsage,
-        };
-    }, [
+    const contextValue = useMemo<SystemInstructionsContextValue>(() => ({
+        instructions,
+        activeInstructionId,
+        activeInstruction,
+        loading,
+        saving,
+        createInstruction,
+        updateInstruction,
+        deleteInstruction,
+        setActiveInstruction,
+        overwriteActiveInstruction,
+        refreshActiveFromSupabase,
+        getUsageScore,
+        recordInstructionUsage,
+    }), [
         activeInstruction,
         activeInstructionId,
         createInstruction,
         deleteInstruction,
         getUsageScore,
+        instructions,
         loading,
         overwriteActiveInstruction,
-        presets,
         recordInstructionUsage,
         refreshActiveFromSupabase,
         saving,

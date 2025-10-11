@@ -211,6 +211,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_instructions: {
+        Row: {
+          created_at: string | null
+          id: string
+          title: string | null
+          content: string | null
+          updated_at: string | null
+          is_active: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          title?: string | null
+          content?: string | null
+          updated_at?: string | null
+          is_active?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          title?: string | null
+          content?: string | null
+          updated_at?: string | null
+          is_active?: boolean | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

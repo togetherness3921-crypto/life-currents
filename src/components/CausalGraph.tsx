@@ -65,6 +65,7 @@ export default function CausalGraph() {
   const pendingAutoFitRef = useRef(false);
   const fitCancelledRef = useRef(false);
   const targetFitGraphIdRef = useRef<string | null>(null);
+  const lastAutoFitSignatureRef = useRef<string | null>(null);
   const prevMainViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const restoreOnBackRef = useRef(false);
   const { now, startOfDay, endOfDay } = useTodayTime(60000);
@@ -306,6 +307,26 @@ export default function CausalGraph() {
       setActiveGraphId(node.id);
     }, 520);
   }, [containerIds, setActiveGraphId, activeGraphId, logViewport]);
+
+  useEffect(() => {
+    if (!layoutReady || nodes.length === 0) {
+      return;
+    }
+
+    const nodeSignature = nodes
+      .map((node) => node.id)
+      .sort()
+      .join('|');
+    const signature = `${activeGraphId}:${nodeSignature}`;
+
+    if (lastAutoFitSignatureRef.current === signature) {
+      return;
+    }
+
+    lastAutoFitSignatureRef.current = signature;
+    targetFitGraphIdRef.current = activeGraphId;
+    pendingAutoFitRef.current = true;
+  }, [activeGraphId, layoutReady, nodes]);
 
   // After nodes/edges update (graph mounted), do an automatic fit view or restore
   useEffect(() => {

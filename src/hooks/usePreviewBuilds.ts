@@ -38,7 +38,6 @@ export const usePreviewBuilds = () => {
     error: null,
     committing: new Set<number>(),
   });
-
   const setCommitting = useCallback((updater: (prev: Set<number>) => Set<number>) => {
     setState((prev) => ({
       ...prev,
@@ -184,6 +183,70 @@ export const usePreviewBuilds = () => {
     }
   }, [fetchBuilds]);
 
+  const markBuildSeen = useCallback(
+    async (build: PreviewBuild) => {
+      if (!build) {
+        return;
+      }
+
+      const buildKey = getBuildKey(build);
+      let original: PreviewBuild | null = null;
+
+      setState((prev) => {
+        const index = prev.builds.findIndex((item) => getBuildKey(item) === buildKey);
+        if (index === -1) {
+          return prev;
+        }
+
+        const target = prev.builds[index];
+        if (target.is_seen) {
+          return prev;
+        }
+
+        original = target;
+        const nextBuilds = [...prev.builds];
+        nextBuilds[index] = { ...target, is_seen: true };
+
+        return {
+          ...prev,
+          builds: nextBuilds,
+        };
+      });
+
+      if (!original) {
+        return;
+      }
+
+      try {
+        const query = supabase.from('preview_builds').update({ is_seen: true });
+        if (build.id) {
+          query.eq('id', build.id);
+        } else {
+          query.eq('pr_number', build.pr_number);
+        }
+        const { error } = await query;
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        setState((prev) => {
+          const index = prev.builds.findIndex((item) => getBuildKey(item) === buildKey);
+          if (index === -1 || !original) {
+            return prev;
+          }
+          const nextBuilds = [...prev.builds];
+          nextBuilds[index] = original;
+          return {
+            ...prev,
+            builds: nextBuilds,
+          };
+        });
+        throw error;
+      }
+    },
+    [],
+  );
+
   const commitBuild = useCallback(
     async (build: PreviewBuild) => {
       if (build.status === 'committed') {
@@ -201,6 +264,14 @@ export const usePreviewBuilds = () => {
 
       try {
         await dispatchMergeWorkflow(build.pr_number);
+        try {
+          await markAllSeen();
+        } catch (markError) {
+          console.error('Failed to mark preview builds as viewed after commit', markError);
+          throw markError instanceof Error
+            ? markError
+            : new Error('Failed to mark preview builds as viewed after commit.');
+        }
       } catch (error) {
         setCommitting((prev) => {
           if (!prev.has(build.pr_number)) {
@@ -213,7 +284,7 @@ export const usePreviewBuilds = () => {
         throw error;
       }
     },
-    [setCommitting],
+    [markAllSeen, setCommitting],
   );
 
   const refresh = useCallback(() => fetchBuilds(), [fetchBuilds]);
@@ -225,6 +296,7 @@ export const usePreviewBuilds = () => {
     unseenCount,
     committingPrNumbers: state.committing as ReadonlySet<number>,
     markAllSeen,
+    markBuildSeen,
     commitBuild,
     refresh,
   };
