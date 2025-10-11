@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { GitPullRequest, Loader2, GitMerge, Eye } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { GitPullRequest, Loader2, GitMerge } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -20,32 +20,36 @@ const PreviewBuildsWidget = () => {
     committingPrNumbers,
     markAllSeen,
     commitBuild,
+    markBuildSeen,
   } = usePreviewBuilds();
 
   const hasUnseen = unseenCount > 0;
 
-  const buttonLabel = hasUnseen
-    ? `${unseenCount} preview ${unseenCount === 1 ? 'build' : 'builds'} ready for review`
-    : 'Preview builds';
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
-    if (nextOpen) {
-      markAllSeen().catch((error) => {
-        const message = error instanceof Error ? error.message : 'Failed to update build visibility.';
-        toast({
-          variant: 'destructive',
-          title: 'Unable to mark builds as seen',
-          description: message,
-        });
-      });
+  useEffect(() => {
+    if (!hasUnseen && open) {
+      setOpen(false);
     }
-  };
+  }, [hasUnseen, open]);
 
-  const handleViewPreview = (rawUrl: string) => {
-    const trimmedUrl = (rawUrl ?? '').trim().replace(/'+$/, '');
+  const buttonLabel = useMemo(
+    () => `${unseenCount} preview ${unseenCount === 1 ? 'build' : 'builds'} ready for review`,
+    [unseenCount],
+  );
+
+  const handleViewPreview = (build: (typeof builds)[number]) => {
+    const trimmedUrl = (build.preview_url ?? '').trim().replace(/'+$/, '');
+
+    void markBuildSeen(build).catch((error) => {
+      const message = error instanceof Error ? error.message : 'Failed to update preview visibility.';
+      toast({
+        variant: 'destructive',
+        title: 'Unable to update preview status',
+        description: message,
+      });
+    });
+
     console.debug('[PreviewBuilds] View clicked', {
-      rawUrl,
+      rawUrl: build.preview_url,
       trimmedUrl,
       locationHref: window.location.href,
     });
@@ -78,6 +82,16 @@ const PreviewBuildsWidget = () => {
       status: build.status,
       previewUrl: build.preview_url,
     });
+
+    void markAllSeen().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Failed to update build visibility.';
+      toast({
+        variant: 'destructive',
+        title: 'Unable to mark builds as viewed',
+        description: message,
+      });
+    });
+
     try {
       await commitBuild(build);
       console.debug('[PreviewBuilds] Commit completed', { prNumber: build.pr_number });
@@ -96,25 +110,27 @@ const PreviewBuildsWidget = () => {
     }
   };
 
+  if (!hasUnseen) {
+    return null;
+  }
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant={hasUnseen ? 'default' : 'secondary'}
+          variant="default"
           className={cn(
             'fixed bottom-6 left-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            hasUnseen ? 'animate-[pulse_2s_ease-in-out_infinite]' : 'hover:translate-y-[-2px]'
+            'animate-[pulse_2s_ease-in-out_infinite]'
           )}
           aria-label={buttonLabel}
         >
           <GitPullRequest className="h-6 w-6" aria-hidden="true" />
           <span className="sr-only">{buttonLabel}</span>
-          {hasUnseen && (
-            <span className="pointer-events-none absolute -top-1.5 -right-1.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
-              {unseenCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : unseenCount}
-            </span>
-          )}
+          <span className="pointer-events-none absolute -top-1.5 -right-1.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
+            {unseenCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : unseenCount}
+          </span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
@@ -149,21 +165,36 @@ const PreviewBuildsWidget = () => {
                 const commitDisabled = isCommitted || isCommitting;
                 const commitLabel = isCommitted ? 'Committed' : isCommitting ? 'Committing…' : 'Commit';
                 const displayPreviewUrl = (build.preview_url ?? '').trim().replace(/'+$/, '');
+                const creationDate = build.created_at ? new Date(build.created_at) : null;
+                const creationLabel = creationDate
+                  ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(creationDate)
+                  : 'Creation time unavailable';
+                const statusLabel = isCommitted ? 'Committed' : 'Pending Review';
+                const statusClass = cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium',
+                  isCommitted
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-600',
+                );
 
                 return (
                   <div
                     key={build.id ?? build.pr_number}
                     className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-sm transition hover:border-primary/50"
                   >
-                    <div className="flex flex-col gap-1">
-                      <a
-                        href={build.pr_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold text-primary underline-offset-4 hover:underline"
-                      >
-                        PR #{build.pr_number}
-                      </a>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <a
+                          href={build.pr_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary underline-offset-4 hover:underline"
+                        >
+                          PR #{build.pr_number}
+                        </a>
+                        <span className={statusClass}>{statusLabel}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{creationLabel}</p>
                       <p className="break-all text-xs text-muted-foreground">
                         {displayPreviewUrl || 'Preview URL unavailable'}
                       </p>
@@ -172,9 +203,9 @@ const PreviewBuildsWidget = () => {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => handleViewPreview(build.preview_url)}
+                        onClick={() => handleViewPreview(build)}
+                        disabled={!displayPreviewUrl}
                       >
-                        <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" />
                         View
                       </Button>
                       <Button

@@ -155,6 +155,57 @@ export const usePreviewBuilds = () => {
     [state.builds],
   );
 
+  const markBuildSeen = useCallback(
+    async (target: PreviewBuild) => {
+      const targetKey = getBuildKey(target);
+      let shouldSync = false;
+
+      setState((prev) => {
+        const nextBuilds = prev.builds.map((build) => {
+          if (getBuildKey(build) !== targetKey) {
+            return build;
+          }
+          if (build.is_seen) {
+            return build;
+          }
+          shouldSync = true;
+          return { ...build, is_seen: true };
+        });
+
+        if (!shouldSync) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          builds: nextBuilds,
+        };
+      });
+
+      if (!shouldSync) {
+        return;
+      }
+
+      const query = supabase
+        .from('preview_builds')
+        .update({ is_seen: true });
+
+      if (target.id) {
+        query.eq('id', target.id);
+      } else {
+        query.eq('pr_number', target.pr_number);
+      }
+
+      const { error } = await query;
+
+      if (error) {
+        await fetchBuilds();
+        throw error;
+      }
+    },
+    [fetchBuilds],
+  );
+
   const markAllSeen = useCallback(async () => {
     let shouldSync = false;
     setState((prev) => {
@@ -227,6 +278,7 @@ export const usePreviewBuilds = () => {
     markAllSeen,
     commitBuild,
     refresh,
+    markBuildSeen,
   };
 };
 

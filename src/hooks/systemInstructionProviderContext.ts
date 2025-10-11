@@ -5,6 +5,7 @@ export interface SystemInstruction {
     title: string;
     content: string;
     updatedAt: string;
+    isActive: boolean;
 }
 
 export interface SystemInstructionsContextValue {
@@ -12,11 +13,8 @@ export interface SystemInstructionsContextValue {
     activeInstructionId: string | null;
     activeInstruction: SystemInstruction | null;
     loading: boolean;
-    saving: boolean;
-    getUsageScore: (id: string) => number;
-    recordInstructionUsage: (id: string) => void;
     createInstruction: (title: string, content: string, options?: { activate?: boolean }) => Promise<string | null>;
-    updateInstruction: (id: string, title: string, content: string, options?: { activate?: boolean }) => Promise<void>;
+    updateInstruction: (id: string, title: string, content: string) => Promise<void>;
     deleteInstruction: (id: string) => Promise<void>;
     setActiveInstruction: (id: string) => Promise<void>;
     overwriteActiveInstruction: (content: string) => Promise<void>;

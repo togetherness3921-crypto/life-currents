@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSystemInstructions } from '@/hooks/useSystemInstructions';
 import {
     Dialog,
@@ -21,7 +21,7 @@ import type { ConversationContextMode } from '@/hooks/conversationContextProvide
 import useModelSelection from '@/hooks/useModelSelection';
 import { getAvailableModels, type ModelInfo } from '@/services/openRouter';
 import { Toggle } from '@/components/ui/toggle';
-import { Check, Pin, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface SettingsDialogProps {
@@ -38,12 +38,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
         activeInstructionId,
         activeInstruction,
         loading,
-        saving,
         setActiveInstruction,
         updateInstruction,
         createInstruction,
         deleteInstruction,
-        getUsageScore: getInstructionUsageScore,
     } = useSystemInstructions();
     const { toast } = useToast();
     const {
@@ -61,13 +59,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     } = useModelSelection();
 
     const [selectedInstructionId, setSelectedInstructionId] = useState<string | null>(null);
-    const [isCreatingNew, setIsCreatingNew] = useState(false);
-    const [titleEditing, setTitleEditing] = useState(false);
-    const [contentEditing, setContentEditing] = useState(false);
     const [localTitle, setLocalTitle] = useState('');
     const [localContent, setLocalContent] = useState('');
-    const titleRef = useRef<HTMLInputElement | null>(null);
-    const contentRef = useRef<HTMLTextAreaElement | null>(null);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const saveIndicatorTimeoutRef = useRef<number | null>(null);
     const [activeTab, setActiveTab] = useState<'system' | 'context' | 'model'>('system');
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [modelSearchTerm, setModelSearchTerm] = useState('');
@@ -107,9 +103,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
     const sortedInstructions = useMemo(() => {
         const ordered = [...instructions];
         ordered.sort((a, b) => {
-            const usageDelta = getInstructionUsageScore(b.id) - getInstructionUsageScore(a.id);
-            if (usageDelta !== 0) {
-                return usageDelta;
+            if (a.isActive !== b.isActive) {
+                return a.isActive ? -1 : 1;
             }
             const updatedDelta = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
             if (!Number.isNaN(updatedDelta) && updatedDelta !== 0) {
@@ -118,23 +113,32 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
             return a.title.localeCompare(b.title);
         });
         return ordered;
-    }, [getInstructionUsageScore, instructions]);
+    }, [instructions]);
 
     const resolvedInstruction = useMemo(() => {
-        if (isCreatingNew) {
-            return null;
-        }
         const targetId = selectedInstructionId ?? activeInstructionId;
         if (!targetId) {
-            return activeInstruction;
+            return activeInstruction ?? null;
         }
         return instructions.find((instruction) => instruction.id === targetId) ?? activeInstruction ?? null;
-    }, [activeInstruction, activeInstructionId, instructions, isCreatingNew, selectedInstructionId]);
+    }, [activeInstruction, activeInstructionId, instructions, selectedInstructionId]);
 
     useEffect(() => {
-        if (isCreatingNew) {
-            return;
-        }
+        setSelectedInstructionId((current) => {
+            if (instructions.length === 0) {
+                return null;
+            }
+            if (current && instructions.some((inst) => inst.id === current)) {
+                return current;
+            }
+            if (activeInstructionId && instructions.some((inst) => inst.id === activeInstructionId)) {
+                return activeInstructionId;
+            }
+            return instructions[0]?.id ?? null;
+        });
+    }, [instructions, activeInstructionId]);
+
+    useEffect(() => {
         if (resolvedInstruction) {
             setLocalTitle(resolvedInstruction.title);
             setLocalContent(resolvedInstruction.content);
@@ -142,47 +146,59 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
             setLocalTitle('');
             setLocalContent('');
         }
-        setTitleEditing(false);
-        setContentEditing(false);
-    }, [isCreatingNew, resolvedInstruction?.content, resolvedInstruction?.id, resolvedInstruction?.title]);
+        setSaveStatus('idle');
+        setSaveError(null);
+    }, [resolvedInstruction]);
 
-    useEffect(() => {
-        if (titleEditing && titleRef.current) {
-            titleRef.current.focus();
-            titleRef.current.select();
+    useEffect(() => () => {
+        if (saveIndicatorTimeoutRef.current) {
+            window.clearTimeout(saveIndicatorTimeoutRef.current);
+            saveIndicatorTimeoutRef.current = null;
         }
-    }, [titleEditing]);
-
-    useEffect(() => {
-        if (contentEditing && contentRef.current) {
-            contentRef.current.focus();
-        }
-    }, [contentEditing]);
-
-    const resetInstructionForm = () => {
-        setSelectedInstructionId(null);
-        setIsCreatingNew(false);
-        setTitleEditing(false);
-        setContentEditing(false);
-        setLocalTitle('');
-        setLocalContent('');
-    };
+    }, []);
 
     const resetDialogState = () => {
-        resetInstructionForm();
         setActiveTab('system');
         setModelSearchTerm('');
+        setSaveStatus('idle');
+        setSaveError(null);
     };
 
-    const handleSelectInstruction = async (id: string) => {
-        const instruction = instructions.find((item) => item.id === id);
-        if (!instruction) return;
-        setIsCreatingNew(false);
+    const persistInstructionChanges = useCallback(async () => {
+        if (!resolvedInstruction) {
+            return;
+        }
+
+        const normalizedTitle = localTitle.trim() || 'Untitled Instruction';
+        const hasTitleChange = normalizedTitle !== resolvedInstruction.title;
+        const hasContentChange = localContent !== resolvedInstruction.content;
+
+        if (!hasTitleChange && !hasContentChange) {
+            return;
+        }
+
+        setSaveStatus('saving');
+        setSaveError(null);
+
+        try {
+            await updateInstruction(resolvedInstruction.id, normalizedTitle, localContent);
+            setSaveStatus('saved');
+            if (saveIndicatorTimeoutRef.current) {
+                window.clearTimeout(saveIndicatorTimeoutRef.current);
+            }
+            saveIndicatorTimeoutRef.current = window.setTimeout(() => {
+                setSaveStatus('idle');
+                saveIndicatorTimeoutRef.current = null;
+            }, 2000);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unexpected error while saving.';
+            setSaveStatus('error');
+            setSaveError(message);
+        }
+    }, [localContent, localTitle, resolvedInstruction, updateInstruction]);
+
+    const handleSelectInstruction = useCallback(async (id: string) => {
         setSelectedInstructionId(id);
-        setLocalTitle(instruction.title);
-        setLocalContent(instruction.content);
-        setTitleEditing(false);
-        setContentEditing(false);
         if (id !== activeInstructionId) {
             try {
                 await setActiveInstruction(id);
@@ -195,87 +211,32 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                 });
             }
         }
-    };
+    }, [activeInstructionId, setActiveInstruction, toast]);
 
-    const handleStartCreate = () => {
-        setActiveTab('system');
-        setIsCreatingNew(true);
-        setSelectedInstructionId(null);
-        setLocalTitle('');
-        setLocalContent('');
-        setTitleEditing(true);
-        setContentEditing(true);
-    };
-
-    const handleCancelEditing = () => {
-        if (isCreatingNew) {
-            resetInstructionForm();
-            return;
-        }
-        if (resolvedInstruction) {
-            setLocalTitle(resolvedInstruction.title);
-            setLocalContent(resolvedInstruction.content);
-        } else {
-            setLocalTitle('');
-            setLocalContent('');
-        }
-        setTitleEditing(false);
-        setContentEditing(false);
-    };
-
-    const baseTitle = isCreatingNew ? '' : resolvedInstruction?.title ?? '';
-    const baseContent = isCreatingNew ? '' : resolvedInstruction?.content ?? '';
-
-    const hasChanges = isCreatingNew
-        ? localTitle.trim().length > 0 || localContent.trim().length > 0
-        : localTitle !== baseTitle || localContent !== baseContent;
-
-    const canSave = localTitle.trim().length > 0 && localContent.trim().length > 0 && (isCreatingNew || hasChanges);
-
-    const handleSave = async () => {
-        if (!canSave) return;
-        if (isCreatingNew) {
-            try {
-                const newId = await createInstruction(localTitle.trim(), localContent.trim(), { activate: true });
-                if (newId) {
-                    setSelectedInstructionId(newId);
-                    setIsCreatingNew(false);
-                }
-            } catch (error) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Failed to create instruction',
-                    description: error instanceof Error ? error.message : 'Unexpected error while creating.',
-                });
-                return;
+    const handleCreateInstruction = useCallback(async () => {
+        try {
+            const newId = await createInstruction('New Instruction', '', { activate: true });
+            if (newId) {
+                setSelectedInstructionId(newId);
+                setLocalTitle('New Instruction');
+                setLocalContent('');
+                setSaveStatus('idle');
+                setSaveError(null);
             }
-        } else if (resolvedInstruction) {
-            try {
-                await updateInstruction(resolvedInstruction.id, localTitle.trim(), localContent.trim(), { activate: true });
-            } catch (error) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Failed to save instruction',
-                    description: error instanceof Error ? error.message : 'Unexpected error while saving.',
-                });
-                return;
-            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unable to create instruction.';
+            toast({
+                variant: 'destructive',
+                title: 'Failed to create instruction',
+                description: message,
+            });
         }
-        setTitleEditing(false);
-        setContentEditing(false);
-    };
+    }, [createInstruction, toast]);
 
-    const handleDelete = async () => {
-        if (isCreatingNew) {
-            resetInstructionForm();
+    const handleDeleteInstruction = useCallback(async () => {
+        if (!resolvedInstruction) {
             return;
         }
-
-        const targetId = resolvedInstruction?.id;
-        if (!targetId) {
-            return;
-        }
-
         if (instructions.length <= 1) {
             toast({
                 variant: 'destructive',
@@ -284,20 +245,48 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
             });
             return;
         }
-
-        const confirmed = window.confirm('Delete this instruction? This cannot be undone.');
-        if (!confirmed) return;
-
         try {
-            await deleteInstruction(targetId);
-            resetInstructionForm();
+            await deleteInstruction(resolvedInstruction.id);
         } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unable to delete instruction.';
             toast({
                 variant: 'destructive',
                 title: 'Failed to delete instruction',
-                description: error instanceof Error ? error.message : 'Unexpected error while deleting.',
+                description: message,
             });
         }
+    }, [deleteInstruction, instructions.length, resolvedInstruction, toast]);
+
+    const handleTitleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setLocalTitle(event.target.value);
+        if (saveStatus !== 'idle') {
+            setSaveStatus('idle');
+        }
+        if (saveError) {
+            setSaveError(null);
+        }
+    };
+
+    const handleContentChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setLocalContent(event.target.value);
+        if (saveStatus !== 'idle') {
+            setSaveStatus('idle');
+        }
+        if (saveError) {
+            setSaveError(null);
+        }
+    };
+
+    const handleTitleBlur = () => {
+        void persistInstructionChanges();
+    };
+
+    const handleContentBlur = () => {
+        void persistInstructionChanges();
+    };
+
+    const handleRetrySave = () => {
+        void persistInstructionChanges();
     };
 
     const isActiveInstruction = resolvedInstruction?.id === activeInstructionId;
@@ -373,7 +362,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                             <div className="flex flex-col gap-3">
                                 <button
                                     type="button"
-                                    onClick={handleStartCreate}
+                                    onClick={handleCreateInstruction}
                                     className="flex h-10 w-full items-center justify-center rounded-md border border-dashed text-sm transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                     aria-label="Create instruction"
                                 >
@@ -383,7 +372,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                     <div className="flex flex-col divide-y">
                                         {sortedInstructions.map((instruction) => {
                                             const isSelected = instruction.id === (selectedInstructionId ?? activeInstructionId);
-                                            const isActive = instruction.id === activeInstructionId;
                                             return (
                                                 <button
                                                     key={instruction.id}
@@ -397,7 +385,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                                     <span className="truncate font-medium">
                                                         {instruction.title || 'Untitled Instruction'}
                                                     </span>
-                                                    {isActive && <Check className="h-4 w-4 text-primary" aria-hidden="true" />}
+                                                    {instruction.isActive && (
+                                                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                                                            Active
+                                                        </span>
+                                                    )}
                                                 </button>
                                             );
                                         })}
@@ -417,26 +409,22 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="space-y-1">
                                                 <p className="text-sm font-semibold">
-                                                    {isCreatingNew
-                                                        ? 'New Instruction'
-                                                        : resolvedInstruction?.title || 'Select an instruction'}
+                                                    {resolvedInstruction?.title || 'Select an instruction'}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    {isCreatingNew
-                                                        ? 'Draft'
-                                                        : isActiveInstruction
+                                                    {resolvedInstruction
+                                                        ? resolvedInstruction.isActive
                                                             ? 'Active instruction'
-                                                            : resolvedInstruction
-                                                                ? 'Inactive'
-                                                                : 'Nothing selected'}
+                                                            : 'Inactive'
+                                                        : 'Nothing selected'}
                                                 </p>
                                             </div>
                                             <Button
                                                 type="button"
                                                 variant="ghost"
                                                 size="icon"
-                                                onClick={handleDelete}
-                                                disabled={(!isCreatingNew && instructions.length <= 1) || (!isCreatingNew && !resolvedInstruction)}
+                                                onClick={handleDeleteInstruction}
+                                                disabled={!resolvedInstruction || instructions.length <= 1}
                                             >
                                                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                                                 <span className="sr-only">Delete instruction</span>
@@ -444,77 +432,41 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onOpenChange }) =
                                         </div>
                                         <div className="space-y-4">
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="instruction-title">Title</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => setTitleEditing(true)}
-                                                        disabled={titleEditing || (!isCreatingNew && !resolvedInstruction)}
-                                                    >
-                                                        <Pin className="h-4 w-4" aria-hidden="true" />
-                                                        <span className="sr-only">Edit title</span>
-                                                    </Button>
-                                                </div>
+                                                <Label htmlFor="instruction-title">Title</Label>
                                                 <Input
                                                     id="instruction-title"
-                                                    ref={titleRef}
                                                     value={localTitle}
-                                                    onChange={(event) => setLocalTitle(event.target.value)}
+                                                    onChange={handleTitleChange}
+                                                    onBlur={handleTitleBlur}
                                                     placeholder="Instruction title"
-                                                    readOnly={!titleEditing && !isCreatingNew}
-                                                    aria-readonly={!titleEditing && !isCreatingNew}
-                                                    className={cn(
-                                                        !titleEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
-                                                    )}
                                                 />
                                             </div>
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="instruction-content">Text Content</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => setContentEditing(true)}
-                                                        disabled={contentEditing || (!isCreatingNew && !resolvedInstruction)}
-                                                    >
-                                                        <Pin className="h-4 w-4" aria-hidden="true" />
-                                                        <span className="sr-only">Edit content</span>
-                                                    </Button>
-                                                </div>
+                                                <Label htmlFor="instruction-content">Text Content</Label>
                                                 <Textarea
                                                     id="instruction-content"
-                                                    ref={contentRef}
                                                     value={localContent}
-                                                    onChange={(event) => setLocalContent(event.target.value)}
-                                                    rows={10}
-                                                    readOnly={!contentEditing && !isCreatingNew}
-                                                    aria-readonly={!contentEditing && !isCreatingNew}
-                                                    className={cn(
-                                                        'h-48 resize-y font-mono text-sm',
-                                                        !contentEditing && !isCreatingNew ? 'cursor-default bg-muted/50' : '',
-                                                    )}
+                                                    onChange={handleContentChange}
+                                                    onBlur={handleContentBlur}
+                                                    rows={6}
+                                                    className="min-h-[3.75rem] resize-y font-mono text-sm"
                                                 />
                                             </div>
+                                            {saveStatus === 'saving' && (
+                                                <p className="text-xs text-muted-foreground">Saving…</p>
+                                            )}
+                                            {saveStatus === 'saved' && (
+                                                <p className="text-xs text-emerald-600">Saved</p>
+                                            )}
+                                            {saveStatus === 'error' && (
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
+                                                    <span>{saveError ?? 'Failed to save changes.'}</span>
+                                                    <Button type="button" variant="ghost" size="sm" onClick={handleRetrySave}>
+                                                        Retry
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
-                                        {(isCreatingNew || titleEditing || contentEditing || hasChanges) && (
-                                            <div className="flex flex-wrap items-center justify-end gap-2">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={handleCancelEditing}
-                                                    disabled={saving}
-                                                >
-                                                    Cancel
-                                                </Button>
-                                                <Button type="button" size="sm" onClick={handleSave} disabled={!canSave || saving}>
-                                                    {saving ? 'Saving…' : isCreatingNew ? 'Create & Activate' : 'Save Changes'}
-                                                </Button>
-                                            </div>
-                                        )}
                                     </>
                                 )}
                             </div>
